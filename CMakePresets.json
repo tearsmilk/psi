@@ -1,0 +1,20 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {"name": "release", "generator": "Ninja", "binaryDir": "${sourceDir}/build",
+     "cacheVariables": {"CMAKE_BUILD_TYPE": "Release"}},
+    {"name": "debug", "generator": "Ninja", "binaryDir": "${sourceDir}/build-debug",
+     "cacheVariables": {"CMAKE_BUILD_TYPE": "Debug"}},
+    {"name": "macos-x64", "inherits": "release",
+     "cacheVariables": {"CMAKE_OSX_DEPLOYMENT_TARGET": "11.0", "CMAKE_OSX_ARCHITECTURES": "x86_64"}}
+  ],
+  "buildPresets": [
+    {"name": "release", "configurePreset": "release"},
+    {"name": "debug", "configurePreset": "debug"},
+    {"name": "macos-x64", "configurePreset": "macos-x64"}
+  ],
+  "testPresets": [
+    {"name": "release", "configurePreset": "release", "output": {"outputOnFailure": true},
+     "environment": {"QT_QPA_PLATFORM": "offscreen"}}
+  ]
+}
