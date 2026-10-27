@@ -26,6 +26,7 @@ if [[ ! -f "$BUILD/Psi.icns" ]]; then
   python3 "$ROOT/packaging/macos/make_icon.py" "$BUILD/Psi.iconset" && iconutil -c icns "$BUILD/Psi.iconset" -o "$BUILD/Psi.icns" || echo "icon skipped"
 fi
 if [[ -f "$BUILD/Psi.icns" ]]; then
+  mkdir -p "$APP/Contents/Resources"
   cp "$BUILD/Psi.icns" "$APP/Contents/Resources/Psi.icns"
   /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile Psi.icns" "$APP/Contents/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string Psi.icns" "$APP/Contents/Info.plist"
 fi
