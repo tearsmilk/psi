@@ -96,7 +96,8 @@ private Q_SLOTS:
         // perpendicular from a base point (40,0) onto y = x → foot (20,20)
         s = SnapEngine::snap(d, {20.2, 19.9}, 2.0, Point{40, 0});
         QVERIFY(s.valid); QCOMPARE(int(s.kind), int(SnapKind::Perpendicular));
-        QVERIFY(!SnapEngine::snap(d, {500, 500}, 2.0).valid);
+        QCOMPARE(int(SnapEngine::snap(d, {500, 500}, 2.0).kind), int(SnapKind::Grid));   // empty space: only the magnet
+        QVERIFY(!SnapEngine::snap(d, {500.4, 500.4}, 2.0, std::nullopt, 0, 0.3).valid);   // outside the magnet radius
         QVERIFY(!SnapEngine::kindName(SnapKind::Midpoint).isEmpty());
         DocumentSettings st; st.ortho = true;
         Point c = SnapEngine::constrain(st, {0, 0}, {10, 3}, false);
@@ -209,6 +210,32 @@ private Q_SLOTS:
         start("extend"); view_->tool()->selectionDone();
         view_->tool()->click({35, 50}, false);
         QVERIFY(std::abs(d.entity(s)->pts[1].x - 100) < 1e-6);
+    }
+    void gridMagnet() {
+        Document& d = project_.document();
+        DocumentSettings st = d.settings(); st.snapStep = 10; st.gridSnap = true; d.setSettings(st);
+        view_->setView(Point{100, 100}, 1.0);   // 8 px magnet radius = 8 mm
+        QSignalSpy spy(view_, &Viewport::cursorMoved);
+        start("line");
+        click({103.4, 97.2});
+        QVERIFY(spy.count() >= 1);
+        Point moved = spy.last().at(0).value<Point>();
+        QVERIFY(std::abs(moved.x - 100) < 1e-9 && std::abs(moved.y - 100) < 1e-9);
+        QCOMPARE(view_->snapLabel(), QStringLiteral("Сетка"));
+        click({203.1, 100.4});
+        QCOMPARE(d.entityCount(), size_t(1));
+        const Entity* l = d.entity(d.entityIds().front());
+        QVERIFY(std::abs(l->pts[0].x - 100) < 1e-9 && std::abs(l->pts[0].y - 100) < 1e-9);
+        QVERIFY(std::abs(l->pts[1].x - 200) < 1e-9 && std::abs(l->pts[1].y - 100) < 1e-9);
+        // object snap wins over the magnet
+        view_->tool()->escape(); start("select");
+        d.addEntity(makeCircle({50.3, 50.3}, 20));
+        SnapResult s = SnapEngine::snap(d, {50.5, 50.0}, 3.0, std::nullopt, 0, 8.0);
+        QCOMPARE(int(s.kind), int(SnapKind::Center));
+        // outside the magnet radius nothing snaps
+        QVERIFY(!SnapEngine::snap(d, {155, 155}, 3.0, std::nullopt, 0, 2.0).valid);
+        st.gridSnap = false; d.setSettings(st);
+        QVERIFY(!SnapEngine::snap(d, {300.2, 300.2}, 3.0, std::nullopt, 0, 8.0).valid);
     }
     void joinBooleanSplitViaTools() {
         Document& d = project_.document();

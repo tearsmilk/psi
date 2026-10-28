@@ -53,7 +53,7 @@ private Q_SLOTS:
         d.addEntity(e);
         d.addEntity(makeCircle({10, 10}, 4));
         d.addEntity(makeText({1, 1}, QStringLiteral("Текст"), 3.5));
-        DocumentSettings s = d.settings(); s.unit = Unit::Centimeter; s.gridSpacing = 25; d.setSettings(s);
+        DocumentSettings s = d.settings(); s.unit = Unit::Centimeter; s.gridSpacing = 25; s.snapStep = 5; s.gridSnap = false; d.setSettings(s);
         Sheet sh = d.sheets()[0]; sh.name = QStringLiteral("Лист А3"); sh.width = 297; sh.height = 420; d.updateSheet(sh);
         ProjectMeta meta; meta.name = QStringLiteral("Проект"); meta.author = QStringLiteral("Я");
         QMap<QString, QByteArray> foreign; foreign["extensions/other-app/data.bin"] = QByteArray("\x01\x02\x03", 3);
@@ -77,6 +77,8 @@ private Q_SLOTS:
         QCOMPARE(d2.layers().size(), size_t(2));
         QCOMPARE(d2.settings().unit, Unit::Centimeter);
         QCOMPARE(d2.settings().gridSpacing, 25.0);
+        QCOMPARE(d2.settings().snapStep, 5.0);
+        QVERIFY(!d2.settings().gridSnap);
         QCOMPARE(d2.sheets()[0].name, QStringLiteral("Лист А3"));
         for (quint64 id : d.entityIds()) QVERIFY(*d.entity(id) == *d2.entity(id));
         QCOMPARE(foreign2.value("extensions/other-app/data.bin"), QByteArray("\x01\x02\x03", 3));

@@ -274,7 +274,7 @@ void Viewport::drawOverlay(QPainter& p) {
         case SnapKind::Intersection: p.drawLine(c + QPointF(-5, -5), c + QPointF(5, 5)); p.drawLine(c + QPointF(-5, 5), c + QPointF(5, -5)); break;
         case SnapKind::Perpendicular: p.drawLine(c + QPointF(-5, 5), c + QPointF(-5, -5)); p.drawLine(c + QPointF(-5, 5), c + QPointF(5, 5)); p.drawRect(QRectF(c.x() - 5, c.y() - 1, 4, 4)); break;
         case SnapKind::Tangent: p.drawEllipse(c, 5, 5); p.drawLine(c + QPointF(-6, -6), c + QPointF(6, -6)); break;
-        case SnapKind::Grid: p.drawLine(c + QPointF(-4, 0), c + QPointF(4, 0)); p.drawLine(c + QPointF(0, -4), c + QPointF(0, 4)); break;
+        case SnapKind::Grid: p.setBrush(pal.accent); p.drawRect(QRectF(c.x() - 3, c.y() - 3, 6, 6)); p.setBrush(Qt::NoBrush); break;
         }
     }
     // crosshair cursor
@@ -301,9 +301,17 @@ QImage Viewport::renderToImage(const QSize& size, qreal dpr) {
 Point Viewport::snapped(QPointF screen, bool shift) {
     Point raw = toWorld(screen);
     std::optional<Point> from = tool_ ? tool_->lastPoint() : std::nullopt;
-    snap_ = SnapEngine::snap(doc_, raw, pickRadiusWorld() * 1.6, from);
+    snap_ = SnapEngine::snap(doc_, raw, pickRadiusWorld() * 1.6, from, 0, 8.0 / scale_);
     Point p = snap_.valid ? snap_.p : raw;
-    if (from && !snap_.valid) p = SnapEngine::constrain(doc_.settings(), *from, p, shift);
+    if (from && (!snap_.valid || snap_.kind == SnapKind::Grid)) {
+        // ortho / polar first, then the magnet on the free coordinate (the constraint is re-applied to the rounded point)
+        Point c = SnapEngine::constrain(doc_.settings(), *from, raw, shift);
+        if (snap_.valid) {
+            Point g = SnapEngine::roundToStep(c, doc_.settings().snapStep);
+            if (dist(g, c) <= 8.0 / scale_) { p = SnapEngine::constrain(doc_.settings(), *from, g, shift); snap_.p = p; }
+            else { snap_.valid = false; p = c; }
+        } else p = c;
+    }
     return p;
 }
 

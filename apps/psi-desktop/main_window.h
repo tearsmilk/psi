@@ -2,6 +2,7 @@
 #include "core/project/project.h"
 #include "modules/draft/tool.h"
 #include <QMainWindow>
+#include <optional>
 #include <QMap>
 
 class QLabel;
@@ -60,6 +61,8 @@ private:
     void runCommandLine();
     void editDocumentSettings();
     void editAppSettings();
+    void setSnapStep(double step);
+    void cycleRounding();
     void toggleSetting(const std::function<void(DocumentSettings&)>& fn, const QString& text);
     void updateTitle();
     void updateUndoRedo();
@@ -84,6 +87,9 @@ private:
     QLabel* unitLbl_ = nullptr;
     QLabel* snapLbl_ = nullptr;
     QLabel* toolLbl_ = nullptr;
+    QToolButton* gridBtn_ = nullptr;        // «⌁ Сетка 1 мм» magnet toggle + step menu
+    std::optional<Point> lastCursor_;       // snapped cursor from the viewport
+    QString tabBase_; int tabIdx_ = -1;     // Tab rounding in the command bar
     QMap<QString, QAction*> actions_;
     QButtonGroup* workspaces_ = nullptr;
     QMap<QString, QToolButton*> wsButtons_;
