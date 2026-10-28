@@ -1,5 +1,7 @@
 #include "modules/draft/input.h"
 #include "modules/draft/tool.h"
+#include "core/geometry/ops.h"
+#include "modules/draft/boolean.h"
 #include "rendering/viewport.h"
 #include <QStringList>
 #include <cmath>
@@ -726,13 +728,138 @@ private:
     std::optional<std::pair<quint64, Point>> first_;
 };
 
+// ---------------------------------------------------------------- Объединение: соединить / булевы / разрезать
+class JoinTool : public ModifyTool {
+public:
+    using ModifyTool::ModifyTool;
+    QString id() const override { return "join"; }
+    QString title() const override { return QStringLiteral("Соединить"); }
+    void begin() override { ModifyTool::begin(); if (stage_ == 0) setPrompt(QStringLiteral("Выберите линии, дуги и полилинии с общими концами и нажмите Enter:")); }
+    void click(Point, bool) override {}
+    void afterSelection() override {
+        std::vector<Entity> src;
+        for (const Entity& e : originals()) if (!e.locked) src.push_back(e);
+        auto joined = joinEntities(src, 1e-4);
+        if (!joined) { if (ctx_.message) ctx_.message(QStringLiteral("Объекты не образуют единую цепочку с общими концами")); finish(); return; }
+        auto c = std::make_unique<EntityCommand>(title());
+        for (const Entity& e : src) c->remove(e);
+        c->add(*joined);
+        ctx_.commit(std::move(c));
+        if (ctx_.message) ctx_.message(joined->closed ? QStringLiteral("Соединено в замкнутую полилинию") : QStringLiteral("Соединено в полилинию"));
+        if (ctx_.selection) ctx_.selection->clear();
+        finish();
+    }
+};
+
+class BooleanTool : public Tool {
+public:
+    BooleanTool(ToolContext c, BoolOp op) : Tool(std::move(c)), op_(op) {}
+    QString id() const override { return op_ == BoolOp::Union ? "union" : op_ == BoolOp::Subtract ? "subtract" : "intersect"; }
+    QString title() const override {
+        return op_ == BoolOp::Union ? QStringLiteral("Объединить") : op_ == BoolOp::Subtract ? QStringLiteral("Вычесть") : QStringLiteral("Пересечение");
+    }
+    void begin() override {
+        first_.reset();
+        if (ctx_.selection && ctx_.selection->size() >= 2) {   // ready selection: apply at once
+            std::vector<quint64> ids(ctx_.selection->begin(), ctx_.selection->end());
+            std::sort(ids.begin(), ids.end());
+            apply(ids, false); return;
+        }
+        setPrompt(op_ == BoolOp::Subtract ? QStringLiteral("Укажите объект, из которого вычесть:") : QStringLiteral("Укажите первый замкнутый объект:"));
+    }
+    void click(Point p, bool shift) override {
+        auto id = pick(ctx_, p);
+        if (!id) return;
+        const Entity* e = ctx_.doc().entity(*id);
+        if (!e || !isClosedShape(*e)) { if (ctx_.message) ctx_.message(QStringLiteral("Нужен замкнутый объект")); return; }
+        if (!first_) {
+            first_ = *id;
+            setPrompt(op_ == BoolOp::Subtract ? QStringLiteral("Укажите вычитаемый объект (Shift — оставить исходные):")
+                                              : QStringLiteral("Укажите второй объект (Shift — оставить исходные):"));
+            return;
+        }
+        if (*id == *first_) return;
+        apply({*first_, *id}, shift);
+    }
+    void enter() override { finish(); }
+    bool keepAfterFinish() const override { return false; }
+private:
+    void apply(const std::vector<quint64>& ids, bool keep) {
+        std::vector<Entity> shapes;
+        for (quint64 id : ids) if (const Entity* e = ctx_.doc().entity(id)) shapes.push_back(*e);
+        std::vector<Entity> res = booleanShapes(shapes, op_);
+        if (res.empty()) { if (ctx_.message) ctx_.message(QStringLiteral("Пустой результат: объекты не пересекаются или не замкнуты")); finish(); return; }
+        auto c = std::make_unique<EntityCommand>(title());
+        if (!keep) for (const Entity& e : shapes) if (!e.locked) c->remove(e);
+        for (const Entity& r : res) c->add(r);
+        ctx_.commit(std::move(c));
+        if (ctx_.selection) ctx_.selection->clear();
+        if (ctx_.message) ctx_.message(QStringLiteral("%1: %2 контур(а)").arg(title()).arg(res.size()));
+        finish();
+    }
+    BoolOp op_;
+    std::optional<quint64> first_;
+};
+
+class SplitTool : public Tool {
+public:
+    using Tool::Tool;
+    QString id() const override { return "split"; }
+    QString title() const override { return QStringLiteral("Разрезать"); }
+    void begin() override { setPrompt(QStringLiteral("Укажите объект в точке разреза (Enter — завершить):")); }
+    void click(Point p, bool) override {
+        auto id = pick(ctx_, p);
+        if (!id) return;
+        const Entity* e = ctx_.doc().entity(*id);
+        if (!e || e->locked) return;
+        std::vector<Entity> parts = splitEntity(*e, p);
+        if (parts.empty()) { if (ctx_.message) ctx_.message(QStringLiteral("Этот объект здесь не разрезать")); return; }
+        auto c = std::make_unique<EntityCommand>(title());
+        c->remove(*e);
+        for (Entity& part : parts) { part.id = 0; c->add(part); }
+        ctx_.commit(std::move(c));
+        if (ctx_.message) ctx_.message(QStringLiteral("Разрезано: %1 част(и)").arg(parts.size()));
+    }
+    void enter() override { finish(); }
+    bool keepAfterFinish() const override { return false; }
+};
+
+class CutByTool : public Tool {
+public:
+    using Tool::Tool;
+    QString id() const override { return "cut"; }
+    QString title() const override { return QStringLiteral("Разрезать объектом"); }
+    void begin() override { target_.reset(); setPrompt(QStringLiteral("Укажите объект, который разрезать:")); }
+    void click(Point p, bool) override {
+        auto id = pick(ctx_, p);
+        if (!id) return;
+        if (!target_) { target_ = *id; setPrompt(QStringLiteral("Укажите режущий объект:")); return; }
+        if (*id == *target_) return;
+        const Entity* e = ctx_.doc().entity(*target_);
+        const Entity* cutter = ctx_.doc().entity(*id);
+        if (!e || !cutter || e->locked) { begin(); return; }
+        std::vector<Entity> parts = cutEntity(*e, *cutter);
+        if (parts.empty()) { if (ctx_.message) ctx_.message(QStringLiteral("Объекты не пересекаются")); begin(); return; }
+        auto c = std::make_unique<EntityCommand>(title());
+        c->remove(*e);
+        for (Entity& part : parts) { part.id = 0; c->add(part); }
+        ctx_.commit(std::move(c));
+        if (ctx_.message) ctx_.message(QStringLiteral("Разрезано: %1 част(и)").arg(parts.size()));
+        finish();
+    }
+    void enter() override { finish(); }
+    bool keepAfterFinish() const override { return false; }
+private:
+    std::optional<quint64> target_;
+};
+
 } // namespace
 
 // ---------------------------------------------------------------- registry
 QStringList toolIds() {
     return {"select", "line", "polyline", "rect", "circle", "arc", "ellipse", "spline", "text", "leader", "dim", "dim-h", "dim-v",
             "dim-radius", "dim-diameter", "dim-angle", "hatch", "move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend",
-            "fillet", "chamfer", "array", "explode", "delete"};
+            "fillet", "chamfer", "array", "explode", "delete", "join", "union", "subtract", "intersect", "split", "cut"};
 }
 
 std::unique_ptr<Tool> createTool(const QString& id, const ToolContext& ctx) {
@@ -766,6 +893,12 @@ std::unique_ptr<Tool> createTool(const QString& id, const ToolContext& ctx) {
     if (id == "array") return std::make_unique<ArrayTool>(ctx);
     if (id == "explode") return std::make_unique<ExplodeTool>(ctx);
     if (id == "delete") return std::make_unique<DeleteTool>(ctx);
+    if (id == "join") return std::make_unique<JoinTool>(ctx);
+    if (id == "union") return std::make_unique<BooleanTool>(ctx, BoolOp::Union);
+    if (id == "subtract") return std::make_unique<BooleanTool>(ctx, BoolOp::Subtract);
+    if (id == "intersect") return std::make_unique<BooleanTool>(ctx, BoolOp::Intersect);
+    if (id == "split") return std::make_unique<SplitTool>(ctx);
+    if (id == "cut") return std::make_unique<CutByTool>(ctx);
     return nullptr;
 }
 

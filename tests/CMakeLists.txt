@@ -9,6 +9,8 @@ endfunction()
 
 psi_test(test_units unit)
 psi_test(test_geometry unit)
+psi_test(test_ops unit)
+psi_test(test_boolean unit)
 psi_test(test_document unit)
 psi_test(test_sheets unit)
 psi_test(test_sketcher unit)

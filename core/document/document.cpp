@@ -21,7 +21,7 @@ Layer Layer::fromJson(const QJsonObject& o) {
 QJsonObject DocumentSettings::toJson() const {
     QJsonObject o;
     o["unit"] = Units::key(unit); o["precision"] = precision; o["grid"] = gridSpacing; o["gridVisible"] = gridVisible;
-    o["snap"] = snapEnabled; o["snapFlags"] = static_cast<int>(snapFlags); o["ortho"] = ortho; o["polar"] = polar; o["polarStep"] = polarStep;
+    o["snap"] = snapEnabled; o["gridSnap"] = gridSnap; o["snapStep"] = snapStep; o["snapFlags"] = static_cast<int>(snapFlags); o["ortho"] = ortho; o["polar"] = polar; o["polarStep"] = polarStep;
     o["textHeight"] = textHeight; o["tolerance"] = tolerance; o["author"] = author;
     return o;
 }
@@ -29,7 +29,7 @@ DocumentSettings DocumentSettings::fromJson(const QJsonObject& o) {
     DocumentSettings s;
     s.unit = Units::fromKey(o.value("unit").toString("mm")).value_or(Unit::Millimeter);
     s.precision = o.value("precision").toInt(2); s.gridSpacing = o.value("grid").toDouble(10); s.gridVisible = o.value("gridVisible").toBool(true);
-    s.snapEnabled = o.value("snap").toBool(true); s.snapFlags = static_cast<unsigned>(o.value("snapFlags").toInt(SnapAll & ~SnapGrid));
+    s.snapEnabled = o.value("snap").toBool(true); s.gridSnap = o.value("gridSnap").toBool(true); s.snapStep = o.value("snapStep").toDouble(1); s.snapFlags = static_cast<unsigned>(o.value("snapFlags").toInt(SnapAll & ~SnapGrid));
     s.ortho = o.value("ortho").toBool(false); s.polar = o.value("polar").toBool(true); s.polarStep = o.value("polarStep").toDouble(45);
     s.textHeight = o.value("textHeight").toDouble(3.5); s.tolerance = o.value("tolerance").toDouble(1e-6); s.author = o.value("author").toString();
     return s;

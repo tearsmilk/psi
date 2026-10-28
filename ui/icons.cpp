@@ -10,8 +10,8 @@ namespace psi {
 
 QStringList Icons::names() {
     return {"select", "line", "polyline", "rect", "circle", "arc", "ellipse", "spline", "text", "leader", "dim", "dim-radius", "dim-angle",
-            "hatch", "move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode",
-            "delete", "zoom-extents", "zoom-window", "grid", "snap", "ortho", "polar", "layers", "sheet", "pdf", "undo", "redo", "new", "open",
+            "dim-h", "dim-v", "dim-diameter", "hatch", "move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode",
+            "delete", "join", "union", "subtract", "intersect", "split", "cut", "search", "star", "compact", "magnet", "zoom-extents", "zoom-window", "grid", "snap", "ortho", "polar", "layers", "sheet", "pdf", "undo", "redo", "new", "open",
             "save", "settings", "draft", "sketch", "model", "assembly", "interior", "drawing", "props", "tree", "tools", "eye", "lock", "plus", "minus", "print"};
 }
 
@@ -35,6 +35,19 @@ static void draw(QPainter& p, const QString& n, double s) {
     else if (n == "dim") { L(4, 13, 16, 13); arrow(4, 13, -1, 0); arrow(16, 13, 1, 0); L(4, 16, 4, 10); L(16, 16, 16, 10); L(8, 6, 12, 6); }
     else if (n == "dim-radius") { C(10, 11, 6); L(10, 11, 15.2, 8); arrow(15.2, 8, 0.87, -0.5); dot(10, 11); }
     else if (n == "dim-angle") { L(4, 16, 16, 16); L(4, 16, 13, 6); QRectF r(-2 * s, 10 * s, 12 * s, 12 * s); p.drawArc(r, 0, 48 * 16); }
+    else if (n == "dim-h") { L(4, 12, 16, 12); arrow(4, 12, -1, 0); arrow(16, 12, 1, 0); L(4, 15, 4, 6); L(16, 15, 16, 6); L(8, 6, 8, 9); L(8, 7.5, 12, 7.5); L(12, 6, 12, 9); }
+    else if (n == "dim-v") { L(8, 4, 8, 16); arrow(8, 4, 0, -1); arrow(8, 16, 0, 1); L(5, 4, 14, 4); L(5, 16, 14, 16); L(12, 8, 15, 8); L(13.5, 8, 13.5, 12); L(12, 12, 15, 12); }
+    else if (n == "dim-diameter") { C(10, 10, 6); L(5.8, 14.2, 14.2, 5.8); arrow(14.2, 5.8, 0.7, -0.7); arrow(5.8, 14.2, -0.7, 0.7); }
+    else if (n == "join") { L(3, 15, 9, 15); L(11, 5, 17, 5); QRectF r(6 * s, 5 * s, 8 * s, 10 * s); p.drawArc(r, -90 * 16, 180 * 16); dot(9, 15); dot(11, 5); }
+    else if (n == "union") { QPainterPath a; a.addRect(QRectF(3 * s, 6 * s, 9 * s, 9 * s)); QPainterPath b; b.addEllipse(QRectF(8 * s, 4 * s, 9 * s, 9 * s)); p.drawPath(a.united(b)); }
+    else if (n == "subtract") { QPainterPath a; a.addRect(QRectF(3 * s, 6 * s, 9 * s, 9 * s)); QPainterPath b; b.addEllipse(QRectF(8 * s, 4 * s, 9 * s, 9 * s)); p.drawPath(a.subtracted(b)); p.save(); p.setPen(QPen(p.pen().color(), p.pen().widthF() * 0.6, Qt::DotLine)); p.drawPath(b); p.restore(); }
+    else if (n == "intersect") { QPainterPath a; a.addRect(QRectF(3 * s, 6 * s, 9 * s, 9 * s)); QPainterPath b; b.addEllipse(QRectF(8 * s, 4 * s, 9 * s, 9 * s)); p.save(); p.setPen(QPen(p.pen().color(), p.pen().widthF() * 0.6, Qt::DotLine)); p.drawPath(a); p.drawPath(b); p.restore(); p.save(); p.setBrush(p.pen().color()); p.drawPath(a.intersected(b)); p.restore(); }
+    else if (n == "split") { L(3, 12, 8, 12); L(12, 12, 17, 12); L(10, 4, 8, 9); L(10, 4, 12, 9); L(10, 4, 10, 2.5); dot(8, 12); dot(12, 12); }
+    else if (n == "cut") { L(3, 14, 17, 6); L(6, 3, 11, 17); C(5, 15.5, 1.8); C(13.5, 15.5, 1.8); }
+    else if (n == "search") { C(9, 9, 5.5); L(13, 13, 17.5, 17.5); }
+    else if (n == "star") { QPainterPath a; for (int i = 0; i < 10; ++i) { double ang = -kPi / 2 + i * kPi / 5; double r = i % 2 ? 3.2 : 7.5; QPointF q((10 + r * std::cos(ang)) * s, (10.5 + r * std::sin(ang)) * s); if (i == 0) a.moveTo(q); else a.lineTo(q); } a.closeSubpath(); p.drawPath(a); }
+    else if (n == "compact") { R(3, 3, 6, 6); R(11, 3, 6, 6); R(3, 11, 6, 6); R(11, 11, 6, 6); }
+    else if (n == "magnet") { QRectF r(4 * s, 3 * s, 12 * s, 12 * s); p.drawArc(r, 0, 180 * 16); L(4, 9, 4, 16); L(16, 9, 16, 16); L(8, 9, 8, 16); L(12, 9, 12, 16); L(4, 16, 8, 16); L(12, 16, 16, 16); QRectF r2(8 * s, 7 * s, 4 * s, 4 * s); p.drawArc(r2, 0, 180 * 16); }
     else if (n == "hatch") { R(4, 4, 12, 12); L(4, 10, 10, 4); L(4, 16, 16, 4); L(10, 16, 16, 10); }
     else if (n == "move") { L(10, 3, 10, 17); L(3, 10, 17, 10); arrow(10, 3, 0, -1); arrow(10, 17, 0, 1); arrow(3, 10, -1, 0); arrow(17, 10, 1, 0); }
     else if (n == "copy") { R(4, 4, 9, 9); R(8, 8, 9, 9); }

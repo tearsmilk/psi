@@ -12,6 +12,9 @@
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGridLayout>
+#include <QShowEvent>
+#include <QSettings>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLabel>
@@ -29,11 +32,10 @@ namespace {
 const QList<QPair<QString, QString>>& toolIcons() {
     static const QList<QPair<QString, QString>> m{
         {"select", "select"}, {"line", "line"}, {"polyline", "polyline"}, {"rect", "rect"}, {"circle", "circle"}, {"arc", "arc"},
-        {"ellipse", "ellipse"}, {"spline", "spline"}, {"text", "text"}, {"leader", "leader"}, {"dim", "dim"}, {"dim-h", "dim"},
-        {"dim-v", "dim"}, {"dim-radius", "dim-radius"}, {"dim-diameter", "dim-radius"}, {"dim-angle", "dim-angle"}, {"hatch", "hatch"},
+        {"ellipse", "ellipse"}, {"spline", "spline"}, {"text", "text"}, {"leader", "leader"}, {"dim", "dim"}, {"dim-radius", "dim-radius"}, {"dim-angle", "dim-angle"}, {"hatch", "hatch"},
         {"move", "move"}, {"copy", "copy"}, {"rotate", "rotate"}, {"mirror", "mirror"}, {"scale", "scale"}, {"offset", "offset"},
         {"trim", "trim"}, {"extend", "extend"}, {"fillet", "fillet"}, {"chamfer", "chamfer"}, {"array", "array"}, {"explode", "explode"},
-        {"delete", "delete"}};
+        {"delete", "delete"}, {"join", "join"}, {"union", "union"}, {"subtract", "subtract"}, {"intersect", "intersect"}, {"split", "split"}, {"cut", "cut"}, {"dim-h", "dim-h"}, {"dim-v", "dim-v"}, {"dim-diameter", "dim-diameter"}};
     return m;
 }
 QString iconFor(const QString& tool) { for (const auto& p : toolIcons()) if (p.first == tool) return p.second; return tool; }
@@ -54,36 +56,186 @@ QPixmap swatch(int rgb, int size = 14) {
 } // namespace
 
 // ================================================================= ToolsPanel
+namespace {
+const int kFavourites = 8;
+QString groupKey(const QString& title) { QString k = title; k.replace(' ', '_'); return "tools/collapsed/" + k; }
+}
+
 ToolsPanel::ToolsPanel(QWidget* parent) : QWidget(parent) {
+    QSettings st;
+    compact_ = st.value("tools/compact", false).toBool();
+    recent_ = st.value("tools/recent").toStringList();
     auto* v = new QVBoxLayout(this);
     v->setContentsMargins(8, 8, 8, 8); v->setSpacing(6);
-    struct Group { QString title; QStringList ids; };
-    const std::vector<Group> groups{
-        {QStringLiteral("Создать"), {"select", "line", "polyline", "rect", "circle", "arc", "ellipse", "spline"}},
-        {QStringLiteral("Аннотации"), {"text", "leader", "dim", "dim-h", "dim-v", "dim-radius", "dim-diameter", "dim-angle", "hatch"}},
-        {QStringLiteral("Изменить"), {"move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode", "delete"}}};
-    const Palette& pal = Theme::current();
-    for (const Group& g : groups) {
-        auto* h = new QLabel(g.title); h->setObjectName("H2"); v->addWidget(h);
-        auto* grid = new QGridLayout; grid->setSpacing(4);
-        int i = 0;
-        for (const QString& id : g.ids) {
-            auto* b = new QToolButton;
-            b->setIcon(Icons::icon(iconFor(id), pal.text));
-            b->setIconSize(QSize(20, 20)); b->setFixedSize(34, 34); b->setCheckable(true); b->setAutoRaise(true);
-            QString t = toolTitle(id);
-            if (id == "dim-h") t += QStringLiteral(" (H)"); else if (id == "dim-v") t += QStringLiteral(" (V)");
-            b->setToolTip(t);
-            connect(b, &QToolButton::clicked, this, [this, id] { Q_EMIT toolRequested(id); });
-            grid->addWidget(b, i / 4, i % 4); ++i;
-            buttons_[id] = b;
-        }
-        v->addLayout(grid);
+    // search + compact toggle
+    auto* top = new QHBoxLayout; top->setSpacing(4);
+    search_ = new QLineEdit; search_->setPlaceholderText(QStringLiteral("Поиск инструмента…")); search_->setClearButtonEnabled(true);
+    search_->setObjectName("toolSearch");
+    connect(search_, &QLineEdit::textChanged, this, &ToolsPanel::setFilter);
+    top->addWidget(search_, 1);
+    compactBtn_ = new QToolButton; compactBtn_->setCheckable(true); compactBtn_->setAutoRaise(true); compactBtn_->setChecked(compact_);
+    compactBtn_->setToolTip(QStringLiteral("Компактный режим: только иконки")); compactBtn_->setFixedSize(28, 28); compactBtn_->setObjectName("toolCompact");
+    connect(compactBtn_, &QToolButton::toggled, this, &ToolsPanel::setCompact);
+    top->addWidget(compactBtn_);
+    v->addLayout(top);
+    groups_ = {
+        {QStringLiteral("Избранное"), {}},
+        {QStringLiteral("Рисование"), {"select", "line", "polyline", "rect", "circle", "arc", "ellipse", "spline"}},
+        {QStringLiteral("Текст и размеры"), {"text", "leader", "dim", "dim-h", "dim-v", "dim-radius", "dim-diameter", "dim-angle"}},
+        {QStringLiteral("Правка"), {"move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode", "delete"}},
+        {QStringLiteral("Объединение"), {"join", "union", "subtract", "intersect", "split", "cut"}},
+        {QStringLiteral("Штриховка"), {"hatch"}}};
+    for (Group& g : groups_) {
+        g.header = new QToolButton; g.header->setText(g.title); g.header->setCheckable(true); g.header->setAutoRaise(true);
+        g.header->setToolButtonStyle(Qt::ToolButtonTextBesideIcon); g.header->setArrowType(Qt::DownArrow);
+        g.header->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); g.header->setObjectName("toolGroup");
+        g.header->setStyleSheet("QToolButton#toolGroup { text-align: left; font-weight: 600; padding: 2px 4px; }");
+        g.collapsed = st.value(groupKey(g.title), false).toBool();
+        g.header->setChecked(!g.collapsed); g.header->setArrowType(g.collapsed ? Qt::RightArrow : Qt::DownArrow);
+        g.body = new QWidget; g.grid = new QGridLayout(g.body); g.grid->setContentsMargins(0, 0, 0, 0); g.grid->setSpacing(3);
+        g.body->setVisible(!g.collapsed);
+        const QString title = g.title;
+        connect(g.header, &QToolButton::toggled, this, [this, title](bool open) { setGroupCollapsed(title, !open); });
+        v->addWidget(g.header); v->addWidget(g.body);
+        if (g.title != QStringLiteral("Избранное")) relayout(g);
     }
+    rebuildFavourites();
     v->addStretch(1);
 }
 
-void ToolsPanel::setActive(const QString& id) { for (auto it = buttons_.begin(); it != buttons_.end(); ++it) it.value()->setChecked(it.key() == id); }
+QToolButton* ToolsPanel::button(const QString& id) {
+    if (QToolButton* b = buttons_.value(id)) return b;
+    auto* b = new QToolButton;
+    b->setCheckable(true); b->setAutoRaise(true); b->setIconSize(QSize(20, 20));
+    b->setText(toolTitle(id)); b->setProperty("toolId", id);
+    b->setFocusPolicy(Qt::NoFocus);
+    connect(b, &QToolButton::clicked, this, [this, id] { Q_EMIT toolRequested(id); });
+    buttons_[id] = b;
+    return b;
+}
+
+void ToolsPanel::relayout(Group& g) {
+    while (QLayoutItem* it = g.grid->takeAt(0)) { if (it->widget()) it->widget()->setParent(nullptr); delete it; }
+    const bool fav = g.title == QStringLiteral("Избранное");
+    const int cols = compact_ ? 4 : 2;
+    int i = 0;
+    for (const QString& id : g.ids) {
+        QToolButton* b = fav ? favButtons_.value(id) : button(id);
+        if (!b) continue;
+        b->setParent(g.body);
+        b->setToolButtonStyle(compact_ ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
+        if (compact_) { b->setFixedSize(36, 36); b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed); }
+        else { b->setMinimumSize(0, 36); b->setMaximumSize(QWIDGETSIZE_MAX, 36); b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); }
+        QString tip = toolTitle(id);
+        if (!shortcuts_.value(id).isEmpty()) tip += QStringLiteral("  ·  %1").arg(shortcuts_.value(id));
+        b->setToolTip(tip);
+        b->setChecked(id == active_);
+        b->setVisible(filter_.isEmpty() || toolTitle(id).contains(filter_, Qt::CaseInsensitive) || id.contains(filter_, Qt::CaseInsensitive) ||
+                      shortcuts_.value(id).contains(filter_, Qt::CaseInsensitive));
+        if (b->isVisibleTo(g.body) || filter_.isEmpty()) { g.grid->addWidget(b, i / cols, i % cols); ++i; }
+    }
+    if (compact_) g.grid->setColumnStretch(cols, 1); else for (int c = 0; c <= cols; ++c) g.grid->setColumnStretch(c, c < cols ? 1 : 0);
+    const bool any = i > 0;
+    g.header->setVisible(any && !(fav && !filter_.isEmpty()));
+    g.body->setVisible(any && !g.collapsed && !(fav && !filter_.isEmpty()));
+    g.grid->activate(); g.body->updateGeometry();
+    if (layout()) layout()->activate();
+}
+
+void ToolsPanel::rebuildFavourites() {
+    Group& g = groups_.front();
+    QStringList ids;
+    for (const QString& id : recent_) if (id != "select" && toolIds().contains(id) && ids.size() < kFavourites) ids.push_back(id);
+    g.ids = ids;
+    // favourites get their own buttons (a widget can live in one layout only)
+    for (const QString& id : ids) {
+        if (favButtons_.contains(id)) continue;
+        auto* b = new QToolButton; b->setCheckable(true); b->setAutoRaise(true); b->setIconSize(QSize(20, 20));
+        b->setText(toolTitle(id)); b->setProperty("toolId", id); b->setFocusPolicy(Qt::NoFocus);
+        if (iconsReady_) b->setIcon(Icons::icon(iconFor(id), Theme::current().text));
+        connect(b, &QToolButton::clicked, this, [this, id] { Q_EMIT toolRequested(id); });
+        favButtons_[id] = b;
+    }
+    for (auto it = favButtons_.begin(); it != favButtons_.end();) {
+        if (!ids.contains(it.key())) { it.value()->deleteLater(); it = favButtons_.erase(it); } else ++it;
+    }
+    relayout(g);
+}
+
+void ToolsPanel::ensureIcons() {
+    if (iconsReady_) return;
+    iconsReady_ = true;
+    const QColor c = Theme::current().text;
+    QHash<QString, QIcon> cache;
+    auto iconOf = [&](const QString& id) { QString n = iconFor(id); if (!cache.contains(n)) cache[n] = Icons::icon(n, c); return cache[n]; };
+    for (auto it = buttons_.begin(); it != buttons_.end(); ++it) it.value()->setIcon(iconOf(it.key()));
+    for (auto it = favButtons_.begin(); it != favButtons_.end(); ++it) it.value()->setIcon(iconOf(it.key()));
+    search_->addAction(Icons::icon("search", Theme::current().muted), QLineEdit::LeadingPosition);
+    compactBtn_->setIcon(Icons::icon("compact", c));
+}
+
+void ToolsPanel::showEvent(QShowEvent* ev) { ensureIcons(); QWidget::showEvent(ev); }
+
+void ToolsPanel::setActive(const QString& id) {
+    active_ = id;
+    for (auto it = buttons_.begin(); it != buttons_.end(); ++it) it.value()->setChecked(it.key() == id);
+    for (auto it = favButtons_.begin(); it != favButtons_.end(); ++it) it.value()->setChecked(it.key() == id);
+    if (id.isEmpty() || id == "select" || !toolIds().contains(id)) return;
+    recent_.removeAll(id); recent_.prepend(id);
+    while (recent_.size() > kFavourites) recent_.removeLast();
+    rebuildFavourites();
+    saveState();
+}
+
+void ToolsPanel::setShortcut(const QString& id, const QString& keys) {
+    shortcuts_[id] = keys;
+    QString tip = toolTitle(id); if (!keys.isEmpty()) tip += QStringLiteral("  ·  %1").arg(keys);
+    if (QToolButton* b = buttons_.value(id)) b->setToolTip(tip);
+    if (QToolButton* b = favButtons_.value(id)) b->setToolTip(tip);
+}
+
+void ToolsPanel::setCompact(bool on) {
+    if (compact_ == on && compactBtn_->isChecked() == on) { for (Group& g : groups_) relayout(g); return; }
+    compact_ = on;
+    if (compactBtn_->isChecked() != on) compactBtn_->setChecked(on);
+    for (Group& g : groups_) relayout(g);
+    saveState();
+}
+
+void ToolsPanel::setFilter(const QString& text) {
+    filter_ = text.trimmed();
+    if (search_->text() != text) search_->setText(text);
+    for (Group& g : groups_) relayout(g);
+}
+
+QStringList ToolsPanel::visibleTools() const {
+    QStringList out;
+    for (const Group& g : groups_) {
+        if (g.title == QStringLiteral("Избранное") || !g.header->isVisibleTo(const_cast<ToolsPanel*>(this))) continue;
+        for (int i = 0; i < g.grid->count(); ++i) if (QWidget* w = g.grid->itemAt(i)->widget()) if (w->isVisibleTo(g.body)) out << w->property("toolId").toString();
+    }
+    return out;
+}
+
+bool ToolsPanel::groupCollapsed(const QString& title) const { for (const Group& g : groups_) if (g.title == title) return g.collapsed; return false; }
+
+void ToolsPanel::setGroupCollapsed(const QString& title, bool collapsed) {
+    for (Group& g : groups_) {
+        if (g.title != title) continue;
+        g.collapsed = collapsed;
+        g.header->setArrowType(collapsed ? Qt::RightArrow : Qt::DownArrow);
+        if (g.header->isChecked() == collapsed) g.header->setChecked(!collapsed);
+        relayout(g);
+    }
+    saveState();
+}
+
+void ToolsPanel::saveState() const {
+    QSettings st;
+    st.setValue("tools/compact", compact_);
+    st.setValue("tools/recent", recent_);
+    for (const Group& g : groups_) st.setValue(groupKey(g.title), g.collapsed);
+}
 
 // ================================================================= LayersPanel
 LayersPanel::LayersPanel(Project& project, QWidget* parent) : QWidget(parent), project_(project) {

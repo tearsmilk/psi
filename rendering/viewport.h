@@ -56,6 +56,7 @@ Q_SIGNALS:
     void viewChanged();
     void toolChanged();
     void deleteRequested();
+    void editRequested(quint64 id, QPointF screen);   // left double-click on an entity
     void promptChanged(const QString& text);
 
 protected:

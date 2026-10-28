@@ -32,11 +32,17 @@ static unsigned flagOf(SnapKind k) {
     return 0;
 }
 
-SnapResult SnapEngine::snap(const Document& doc, Point cursor, double radius, const std::optional<Point>& from, unsigned flagsOverride) {
+Point SnapEngine::roundToStep(Point p, double step) {
+    if (step <= 0) return p;
+    return {std::round(p.x / step) * step, std::round(p.y / step) * step};
+}
+
+SnapResult SnapEngine::snap(const Document& doc, Point cursor, double radius, const std::optional<Point>& from, unsigned flagsOverride, double gridRadius) {
     SnapResult best;
     const DocumentSettings& s = doc.settings();
     unsigned flags = flagsOverride ? flagsOverride : s.snapFlags;
-    if (!s.snapEnabled && !flagsOverride) return best;
+    const bool objects = s.snapEnabled || flagsOverride;
+    if (!objects) flags = 0;
     double bestD = radius;
     auto consider = [&](Point p, SnapKind k, quint64 id, double priority = 1.0) {
         if (!(flags & flagOf(k))) return;
@@ -62,9 +68,15 @@ SnapResult SnapEngine::snap(const Document& doc, Point cursor, double radius, co
             for (size_t j = i + 1; j < near.size(); ++j)
                 for (Point p : intersections(*near[i], *near[j])) consider(p, SnapKind::Intersection, near[i]->id, 0.9);
     }
-    if ((flags & SnapGrid) && s.gridSpacing > 0 && !best.valid) {
-        Point g{std::round(cursor.x / s.gridSpacing) * s.gridSpacing, std::round(cursor.y / s.gridSpacing) * s.gridSpacing};
-        consider(g, SnapKind::Grid, 0, 1.0);
+    if (best.valid) return best;   // object snap wins over the grid magnet
+    if ((flags & SnapGrid) && s.gridSpacing > 0) {   // legacy: snap to the visible grid
+        consider(roundToStep(cursor, s.gridSpacing), SnapKind::Grid, 0, 1.0);
+        if (best.valid) return best;
+    }
+    if (s.gridSnap && s.snapStep > 0 && !flagsOverride) {   // magnet to round coordinates within gridRadius
+        Point g = roundToStep(cursor, s.snapStep);
+        double r = gridRadius > 0 ? gridRadius : radius;
+        if (dist(g, cursor) <= r) best = {g, SnapKind::Grid, 0, true};
     }
     return best;
 }

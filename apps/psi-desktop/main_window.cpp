@@ -1,4 +1,8 @@
 #include "main_window.h"
+#include "ui/inline_editor.h"
+#include "modules/draft/edit.h"
+#include <algorithm>
+#include <QMenu>
 #include "dialogs.h"
 #include "io/dxf/dxf.h"
 #include "io/pdf/pdf_export.h"
@@ -107,7 +111,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(sketch_, &SketchPage::sketchesChanged, this, [this] { if (tree_) tree_->refresh(); });
     connect(interior_, &InteriorPage::buildingChanged, this, [this] { if (tree_) tree_->refresh(); });
     connect(command_, &QLineEdit::returnPressed, this, &MainWindow::runCommandLine);
-    connect(view_, &Viewport::cursorMoved, this, [this](Point) { updateStatus(); });
+    connect(view_, &Viewport::cursorMoved, this, [this](Point p) { lastCursor_ = p; updateStatus(); });
+    command_->installEventFilter(this);
+    connect(view_, &Viewport::editRequested, this, &MainWindow::openInlineEditor);
+    connect(command_, &QLineEdit::textEdited, this, [this] { tabIdx_ = -1; });
     connect(view_, &Viewport::promptChanged, this, [this](const QString& t) { prompt_->setText(t.isEmpty() ? QStringLiteral("Выберите инструмент") : t); });
     connect(view_, &Viewport::toolChanged, this, [this] {
         QString id = view_->toolId();
@@ -177,7 +184,8 @@ void MainWindow::buildActions() {
     action("snap", QStringLiteral("Привязка"), "snap", QKeySequence("F3"), [this] { toggleSetting([](DocumentSettings& s) { s.snapEnabled = !s.snapEnabled; }, QStringLiteral("Привязка")); });
     action("ortho", QStringLiteral("Орто"), "ortho", QKeySequence("F8"), [this] { toggleSetting([](DocumentSettings& s) { s.ortho = !s.ortho; }, QStringLiteral("Орто")); });
     action("polar", QStringLiteral("Полярное отслеживание"), "polar", QKeySequence("F10"), [this] { toggleSetting([](DocumentSettings& s) { s.polar = !s.polar; }, QStringLiteral("Полярное отслеживание")); });
-    for (const char* id : {"grid", "snap", "ortho", "polar"}) actions_[id]->setCheckable(true);
+    action("gridSnap", QStringLiteral("Магнит к сетке"), "magnet", QKeySequence("F9"), [this] { toggleSetting([](DocumentSettings& s) { s.gridSnap = !s.gridSnap; }, QStringLiteral("Магнит к сетке")); });
+    for (const char* id : {"grid", "snap", "gridSnap", "ortho", "polar"}) actions_[id]->setCheckable(true);
 
     const QMap<QString, QKeySequence> toolKeys{{"select", QKeySequence("Escape")}, {"line", QKeySequence("L")}, {"polyline", QKeySequence("P")}, {"rect", QKeySequence("R")},
                                                {"circle", QKeySequence("C")}, {"arc", QKeySequence("A")}, {"ellipse", QKeySequence("E")}, {"spline", QKeySequence("S")},
@@ -186,7 +194,9 @@ void MainWindow::buildActions() {
                                                {"dim-angle", QKeySequence("Shift+A")}, {"hatch", QKeySequence("H")}, {"move", QKeySequence("M")}, {"copy", QKeySequence("Shift+C")},
                                                {"rotate", QKeySequence("Shift+O")}, {"mirror", QKeySequence("Shift+M")}, {"scale", QKeySequence("Shift+S")}, {"offset", QKeySequence("O")},
                                                {"trim", QKeySequence("Shift+T")}, {"extend", QKeySequence("Shift+E")}, {"fillet", QKeySequence("F")}, {"chamfer", QKeySequence("Shift+F")},
-                                               {"array", QKeySequence("Shift+Y")}, {"explode", QKeySequence("X")}, {"delete", QKeySequence()}};
+                                               {"array", QKeySequence("Shift+Y")}, {"explode", QKeySequence("X")}, {"delete", QKeySequence()},
+                                               {"join", QKeySequence("J")}, {"union", QKeySequence("Shift+U")}, {"subtract", QKeySequence("Shift+B")}, {"intersect", QKeySequence("Shift+I")},
+                                               {"split", QKeySequence("Shift+X")}, {"cut", QKeySequence("Shift+K")}};
     for (const QString& id : toolIds()) {
         if (id == "delete") continue;
         QString tid = id;
@@ -217,13 +227,15 @@ void MainWindow::buildMenus() {
     QMenu* edit = mb->addMenu(QStringLiteral("Правка"));
     add(edit, {"undo", "redo", "-", "delete", "selectAll", "deselect", "-", "docSettings", "appSettings"});
     QMenu* viewM = mb->addMenu(QStringLiteral("Вид"));
-    add(viewM, {"zoomExtents", "zoomWindow", "zoomIn", "zoomOut", "-", "grid", "snap", "ortho", "polar"});
+    add(viewM, {"zoomExtents", "zoomWindow", "zoomIn", "zoomOut", "-", "grid", "snap", "gridSnap", "ortho", "polar"});
     QMenu* create = mb->addMenu(QStringLiteral("Создать"));
     for (const char* id : {"line", "polyline", "rect", "circle", "arc", "ellipse", "spline"}) create->addAction(actions_[QString("tool.") + id]);
     create->addSeparator();
     for (const char* id : {"text", "leader", "dim", "dim-h", "dim-v", "dim-radius", "dim-diameter", "dim-angle", "hatch"}) create->addAction(actions_[QString("tool.") + id]);
     QMenu* toolsM = mb->addMenu(QStringLiteral("Инструменты"));
     for (const char* id : {"move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode"}) toolsM->addAction(actions_[QString("tool.") + id]);
+    toolsM->addSeparator();
+    for (const char* id : {"join", "union", "subtract", "intersect", "split", "cut"}) toolsM->addAction(actions_[QString("tool.") + id]);
     QMenu* window = mb->addMenu(QStringLiteral("Окно"));
     add(window, {"ws.welcome", "ws.draft", "ws.sheets", "ws.sketch", "ws.interior"});
     window->addSeparator();
@@ -268,7 +280,7 @@ void MainWindow::buildWorkspaceBar() {
     }
     auto* spacer = new QWidget; spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolbar_->addWidget(spacer);
-    for (const char* id : {"undo", "redo", "zoomExtents", "grid", "snap", "ortho", "polar", "exportPdf"}) toolbar_->addAction(actions_[id]);
+    for (const char* id : {"undo", "redo", "zoomExtents", "grid", "snap", "gridSnap", "ortho", "polar", "exportPdf"}) toolbar_->addAction(actions_[id]);
 }
 
 void MainWindow::buildDocks() {
@@ -286,6 +298,7 @@ void MainWindow::buildDocks() {
     props_ = new PropertiesPanel(project_, *view_);
     tree_ = new TreePanel(project_, *view_);
     connect(tools_, &ToolsPanel::toolRequested, this, &MainWindow::startTool);
+    for (const QString& id : toolIds()) if (QAction* a = actions_.value("tool." + id)) tools_->setShortcut(id, a->shortcut().toString(QKeySequence::NativeText));
     connect(tree_, &TreePanel::sheetActivated, this, [this](quint64 id) { showPage(PageSheets); sheets_->selectSheet(id); });
     QDockWidget* dTools = mk(QStringLiteral("Инструменты"), tools_, Qt::LeftDockWidgetArea, "dockTools");
     QDockWidget* dTree = mk(QStringLiteral("Дерево документа"), tree_, Qt::LeftDockWidgetArea, "dockTree");
@@ -310,6 +323,20 @@ void MainWindow::buildStatusBar() {
     statusBar()->addWidget(toolLbl_, 1);
     dofLbl_ = new QLabel; dofLbl_->setObjectName("Hint"); dofLbl_->hide();
     statusBar()->addPermanentWidget(dofLbl_);
+    gridBtn_ = new QToolButton; gridBtn_->setObjectName("gridMagnet"); gridBtn_->setAutoRaise(true); gridBtn_->setCheckable(true);
+    gridBtn_->setToolTip(QStringLiteral("Магнит к круглым координатам (F9). Правая кнопка / стрелка — шаг привязки"));
+    gridBtn_->setPopupMode(QToolButton::MenuButtonPopup);
+    auto* stepMenu = new QMenu(gridBtn_);
+    for (double st : {0.5, 1.0, 5.0, 10.0, 50.0, 100.0}) stepMenu->addAction(QStringLiteral("%1 мм").arg(st), this, [this, st] { setSnapStep(st); });
+    stepMenu->addSeparator();
+    stepMenu->addAction(QStringLiteral("Другой шаг…"), this, [this] {
+        bool ok = false;
+        double v = QInputDialog::getDouble(this, QStringLiteral("Шаг привязки"), QStringLiteral("Шаг магнита, мм:"), project_.document().settings().snapStep, 0.001, 100000, 3, &ok);
+        if (ok) setSnapStep(v);
+    });
+    gridBtn_->setMenu(stepMenu);
+    connect(gridBtn_, &QToolButton::clicked, this, [this] { actions_["gridSnap"]->trigger(); });
+    statusBar()->addPermanentWidget(gridBtn_);
     statusBar()->addPermanentWidget(snapLbl_);
     statusBar()->addPermanentWidget(unitLbl_);
 }
@@ -366,7 +393,7 @@ void MainWindow::runCommandLine() {
                                              {"a", "arc"}, {"el", "ellipse"}, {"e", "ellipse"}, {"spl", "spline"}, {"s", "spline"}, {"t", "text"}, {"le", "leader"}, {"d", "dim"}, {"dim", "dim"},
                                              {"dh", "dim-h"}, {"dv", "dim-v"}, {"dr", "dim-radius"}, {"dd", "dim-diameter"}, {"da", "dim-angle"}, {"h", "hatch"}, {"m", "move"}, {"co", "copy"},
                                              {"ro", "rotate"}, {"mi", "mirror"}, {"sc", "scale"}, {"o", "offset"}, {"tr", "trim"}, {"ex", "extend"}, {"f", "fillet"}, {"cha", "chamfer"},
-                                             {"ar", "array"}, {"x", "explode"}, {"del", "delete"}, {"e!", "delete"}, {"u", "undo"}, {"z", "zoom"}, {"ze", "zoomExtents"}};
+                                             {"ar", "array"}, {"x", "explode"}, {"j", "join"}, {"un", "union"}, {"su", "subtract"}, {"in", "intersect"}, {"br", "split"}, {"cut", "cut"}, {"del", "delete"}, {"e!", "delete"}, {"u", "undo"}, {"z", "zoom"}, {"ze", "zoomExtents"}};
     QString low = text.toLower();
     Tool* tool = view_->tool();
     bool consumed = tool && tool->input(text);
@@ -380,7 +407,56 @@ void MainWindow::runCommandLine() {
     statusBar()->showMessage(QStringLiteral("Не понял: «%1». Введите точку (100,50 · @40<30) или команду (l, c, r, m …)").arg(text), 5000);
 }
 
+// Double-click on an entity: inline editor over the viewport; Enter applies through an undoable command
+void MainWindow::openInlineEditor(quint64 id, QPointF screen) {
+    const Entity* e = project_.document().entity(id);
+    if (!e || e->locked) return;
+    std::vector<EditField> fields = editFields(project_.document(), *e);
+    if (fields.empty()) { statusBar()->showMessage(QStringLiteral("Для этого объекта нет быстрого редактирования — см. панель «Свойства»"), 3000); return; }
+    if (auto* old = view_->findChild<InlineEditor*>()) old->close();
+    const DocumentSettings& s = project_.document().settings();
+    auto* ed = new InlineEditor(fields, s.unit, s.precision, view_);
+    connect(ed, &InlineEditor::applied, this, [this, id](const QMap<QString, double>& values, const QString& text) {
+        const Entity* cur = project_.document().entity(id);
+        if (!cur) return;
+        if (auto cmd = applyEdit(project_.document(), *cur, values, text)) project_.commands().push(std::move(cmd));
+        view_->invalidate(); view_->setFocus();
+    });
+    connect(ed, &InlineEditor::cancelled, this, [this] { view_->setFocus(); });
+    ed->popup(screen);
+}
+
+void MainWindow::setSnapStep(double step) {
+    if (step <= 0) return;
+    toggleSetting([step](DocumentSettings& s) { s.snapStep = step; s.gridSnap = true; }, QStringLiteral("Шаг привязки"));
+    statusBar()->showMessage(QStringLiteral("Шаг магнита: %1").arg(Units::format(step, project_.document().settings().unit, project_.document().settings().precision, true)), 2000);
+}
+
+// Tab in the command bar: round the typed number to the next step of the cycle (шаг привязки → 5 → 10 → 50 → 100 → 0.5 → 1 …)
+void MainWindow::cycleRounding() {
+    static const std::vector<double> steps{0.5, 1, 5, 10, 50, 100};
+    const DocumentSettings& s = project_.document().settings();
+    if (tabIdx_ < 0) {
+        tabBase_ = command_->text().trimmed();
+        auto it = std::find_if(steps.begin(), steps.end(), [&](double v) { return std::abs(v - s.snapStep) < 1e-9; });
+        tabIdx_ = it == steps.end() ? 1 : static_cast<int>(it - steps.begin());
+    } else {
+        tabIdx_ = (tabIdx_ + 1) % static_cast<int>(steps.size());
+    }
+    QString t = tabBase_; t.replace(',', '.');
+    bool ok = false; double v = t.toDouble(&ok);
+    if (!ok) return;
+    double step = steps[static_cast<size_t>(tabIdx_)];
+    double r = std::round(v / step) * step;
+    command_->setText(QString::number(r, 'f', step < 1 ? 1 : 0));
+    statusBar()->showMessage(QStringLiteral("Округление до %1 мм (Tab — дальше)").arg(step), 1500);
+}
+
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == command_ && event->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_Tab || ke->key() == Qt::Key_Backtab) { cycleRounding(); return true; }
+    }
     if (watched == view_ && event->type() == QEvent::KeyPress) {
         auto* ke = static_cast<QKeyEvent*>(event);
         const QString t = ke->text();
@@ -638,10 +714,14 @@ void MainWindow::updateStatus() {
     actions_["snap"]->setChecked(s.snapEnabled);
     actions_["ortho"]->setChecked(s.ortho);
     actions_["polar"]->setChecked(s.polar);
-    QPoint gp = view_->mapFromGlobal(QCursor::pos());
-    if (view_->rect().contains(gp)) {
-        Point w = view_->toWorld(gp);
+    actions_["gridSnap"]->setChecked(s.gridSnap);
+    if (lastCursor_) {   // the snapped point: exact round coordinates when the magnet holds
+        Point w = *lastCursor_;
         coords_->setText(QStringLiteral("X %1   Y %2").arg(Units::format(w.x, s.unit, s.precision), Units::format(w.y, s.unit, s.precision)));
+    }
+    if (gridBtn_) {
+        gridBtn_->setChecked(s.gridSnap);
+        gridBtn_->setText(QStringLiteral("⌁ Сетка %1").arg(Units::format(s.snapStep, s.unit, s.precision, true)));
     }
     unitLbl_->setText(Units::name(s.unit) + QStringLiteral("  ·  сетка %1").arg(Units::format(s.gridSpacing, s.unit, s.precision, true)));
     QString sn = view_->snapLabel();

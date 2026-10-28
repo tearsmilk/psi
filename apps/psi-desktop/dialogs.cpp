@@ -128,6 +128,11 @@ DocumentSettingsDialog::DocumentSettingsDialog(const DocumentSettings& s, QWidge
     grid_ = new QDoubleSpinBox; grid_->setRange(0.01, 100000); grid_->setDecimals(2); grid_->setSuffix(QStringLiteral(" мм")); grid_->setValue(s.gridSpacing); f->addRow(QStringLiteral("Шаг сетки"), grid_);
     gridVisible_ = new QCheckBox(QStringLiteral("Показывать сетку")); gridVisible_->setChecked(s.gridVisible); f->addRow(QString(), gridVisible_);
     snap_ = new QCheckBox(QStringLiteral("Объектная привязка")); snap_->setChecked(s.snapEnabled); f->addRow(QString(), snap_);
+    gridSnap_ = new QCheckBox(QStringLiteral("Магнит к круглым координатам (F9)")); gridSnap_->setChecked(s.gridSnap); f->addRow(QString(), gridSnap_);
+    snapStep_ = new QComboBox; snapStep_->setEditable(true);
+    for (double st : {0.5, 1.0, 5.0, 10.0, 50.0, 100.0}) snapStep_->addItem(QString::number(st), st);
+    snapStep_->setCurrentText(QString::number(s.snapStep));
+    f->addRow(QStringLiteral("Шаг привязки, мм"), snapStep_);
     auto* grid = new QGridLayout;
     const std::vector<std::pair<unsigned, QString>> flags{{SnapEndpoint, QStringLiteral("Конечная точка")}, {SnapMidpoint, QStringLiteral("Середина")}, {SnapCenter, QStringLiteral("Центр")},
                                                         {SnapQuadrant, QStringLiteral("Квадрант")}, {SnapIntersection, QStringLiteral("Пересечение")}, {SnapPerpendicular, QStringLiteral("Перпендикуляр")},
@@ -151,6 +156,8 @@ DocumentSettings DocumentSettingsDialog::settings() const {
     s.gridSpacing = grid_->value();
     s.gridVisible = gridVisible_->isChecked();
     s.snapEnabled = snap_->isChecked();
+    s.gridSnap = gridSnap_->isChecked();
+    { QString t = snapStep_->currentText().trimmed(); t.replace(',', '.'); bool ok = false; double v = t.toDouble(&ok); if (ok && v > 0) s.snapStep = v; }
     s.snapFlags = 0; for (auto it = snapBoxes_.begin(); it != snapBoxes_.end(); ++it) if (it.value()->isChecked()) s.snapFlags |= it.key();
     s.ortho = ortho_->isChecked(); s.polar = polar_->isChecked(); s.polarStep = polarStep_->value();
     s.textHeight = textHeight_->value();

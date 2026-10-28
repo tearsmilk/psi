@@ -15,6 +15,8 @@ struct DocumentSettings {
     double gridSpacing = 10;      // mm
     bool gridVisible = true;
     bool snapEnabled = true;
+    bool gridSnap = true;         // «магнит» к круглым координатам
+    double snapStep = 1;          // шаг магнита, mm
     unsigned snapFlags = SnapAll & ~SnapGrid;
     bool ortho = false;
     bool polar = true;            // 45° tracking
@@ -27,7 +29,7 @@ struct DocumentSettings {
     static DocumentSettings fromJson(const QJsonObject& o);
     bool operator==(const DocumentSettings& o) const {
         return unit == o.unit && precision == o.precision && gridSpacing == o.gridSpacing && gridVisible == o.gridVisible &&
-               snapEnabled == o.snapEnabled && snapFlags == o.snapFlags && ortho == o.ortho && polar == o.polar &&
+               snapEnabled == o.snapEnabled && gridSnap == o.gridSnap && snapStep == o.snapStep && snapFlags == o.snapFlags && ortho == o.ortho && polar == o.polar &&
                polarStep == o.polarStep && textHeight == o.textHeight && tolerance == o.tolerance && author == o.author;
     }
 };

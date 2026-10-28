@@ -3,6 +3,7 @@
 #include "io/pdf/pdf_export.h"
 #include "modules/draft/demo.h"
 #include "modules/draft/tool.h"
+#include "panels.h"
 #include "rendering/viewport.h"
 #include "ui/icons.h"
 #include "ui/theme.h"
@@ -54,8 +55,28 @@ int runSelfTest() {
         check(doc.entityCount() == before + 2, QStringLiteral("инструмент «Линия»: две линии"));
         project.commands().undo(); project.commands().undo();
         check(doc.entityCount() == before, QStringLiteral("отмена"));
-        check(toolIds().size() == 30, QStringLiteral("реестр инструментов"));
+        check(toolIds().size() == 36, QStringLiteral("реестр инструментов"));
         for (const QString& id : toolIds()) { auto t = createTool(id, ctx); if (!t) { check(false, "createTool " + id); break; } }
+    }
+
+    // tool palette: groups, search, favourites, compact mode
+    {
+        QElapsedTimer pt; pt.start();
+        ToolsPanel panel; panel.resize(260, 900); panel.show();
+        check(pt.elapsed() < 400, QStringLiteral("палитра инструментов: создание %1 мс").arg(pt.elapsed()));
+        check(panel.visibleTools().size() == toolIds().size(), QStringLiteral("палитра: все инструменты видны"));
+        panel.setFilter(QStringLiteral("окруж"));
+        check(panel.visibleTools() == QStringList{"circle"}, QStringLiteral("палитра: поиск по названию"));
+        panel.setShortcut("rect", "R");
+        panel.setFilter(QString());
+        panel.setActive("circle"); panel.setActive("rect"); panel.setActive("circle");
+        check(panel.recent().mid(0, 2) == QStringList{"circle", "rect"}, QStringLiteral("палитра: избранное — недавние"));
+        panel.setGroupCollapsed(QStringLiteral("Правка"), true);
+        check(panel.groupCollapsed(QStringLiteral("Правка")), QStringLiteral("палитра: сворачивание группы"));
+        panel.setGroupCollapsed(QStringLiteral("Правка"), false);
+        panel.setCompact(true);
+        check(panel.compact() && panel.visibleTools().size() == toolIds().size(), QStringLiteral("палитра: компактный режим"));
+        panel.setCompact(false);
     }
 
     // .psi round trip

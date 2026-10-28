@@ -46,7 +46,7 @@ public:
     DocumentSettings settings() const;
 private:
     DocumentSettings s_;
-    QComboBox* unit_; QSpinBox* precision_; QDoubleSpinBox* grid_; QCheckBox* gridVisible_; QCheckBox* snap_; QCheckBox* ortho_; QCheckBox* polar_;
+    QComboBox* unit_; QSpinBox* precision_; QDoubleSpinBox* grid_; QCheckBox* gridVisible_; QCheckBox* snap_; QCheckBox* gridSnap_; QComboBox* snapStep_; QCheckBox* ortho_; QCheckBox* polar_;
     QDoubleSpinBox* polarStep_; QDoubleSpinBox* textHeight_; QLineEdit* author_;
     QMap<unsigned, QCheckBox*> snapBoxes_;
 };
