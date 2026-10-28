@@ -297,6 +297,9 @@ void MainWindow::buildDocks() {
     layers_ = new LayersPanel(project_);
     props_ = new PropertiesPanel(project_, *view_);
     tree_ = new TreePanel(project_, *view_);
+    tools_->setMinimumWidth(230);
+    props_->setMinimumWidth(280);
+    layers_->setMinimumWidth(280);
     connect(tools_, &ToolsPanel::toolRequested, this, &MainWindow::startTool);
     for (const QString& id : toolIds()) if (QAction* a = actions_.value("tool." + id)) tools_->setShortcut(id, a->shortcut().toString(QKeySequence::NativeText));
     connect(tree_, &TreePanel::sheetActivated, this, [this](quint64 id) { showPage(PageSheets); sheets_->selectSheet(id); });
@@ -470,9 +473,13 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void MainWindow::showPage(Page p) {
+    const Page prev = static_cast<Page>(stack_->currentIndex());
+    // Hiding the docks makes QMainWindow forget their sizes — keep the Draft dock layout and restore it on return.
+    if (prev == PageDraft && p != PageDraft) draftDockState_ = saveState();
     stack_->setCurrentIndex(p);
     bool draft = p == PageDraft;
     for (QDockWidget* d : docks_) d->setVisible(draft && !d->property("userHidden").toBool());
+    if (draft && prev != PageDraft && !draftDockState_.isEmpty()) restoreState(draftDockState_);
     if (wsButtons_.contains("draft")) wsButtons_["draft"]->setChecked(p == PageDraft);
     if (wsButtons_.contains("sheets")) wsButtons_["sheets"]->setChecked(p == PageSheets);
     if (wsButtons_.contains("sketch")) wsButtons_["sketch"]->setChecked(p == PageSketch);

@@ -21,6 +21,8 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTableWidget>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -65,7 +67,17 @@ ToolsPanel::ToolsPanel(QWidget* parent) : QWidget(parent) {
     QSettings st;
     compact_ = st.value("tools/compact", false).toBool();
     recent_ = st.value("tools/recent").toStringList();
-    auto* v = new QVBoxLayout(this);
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0); outer->setSpacing(0);
+    scroll_ = new QScrollArea; scroll_->setObjectName("toolsScroll");
+    scroll_->setWidgetResizable(true); scroll_->setFrameShape(QFrame::NoFrame);
+    scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    content_ = new QWidget; content_->setObjectName("toolsContent");
+    content_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    scroll_->setWidget(content_);
+    outer->addWidget(scroll_, 1);
+    auto* v = new QVBoxLayout(content_);
     v->setContentsMargins(8, 8, 8, 8); v->setSpacing(6);
     // search + compact toggle
     auto* top = new QHBoxLayout; top->setSpacing(4);
@@ -125,7 +137,7 @@ void ToolsPanel::relayout(Group& g) {
         b->setParent(g.body);
         b->setToolButtonStyle(compact_ ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
         if (compact_) { b->setFixedSize(36, 36); b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed); }
-        else { b->setMinimumSize(0, 36); b->setMaximumSize(QWIDGETSIZE_MAX, 36); b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); }
+        else { b->setMinimumSize(40, 36); b->setMaximumSize(QWIDGETSIZE_MAX, 36); b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); }   // min 40: long labels clip instead of forcing a horizontal scroll
         QString tip = toolTitle(id);
         if (!shortcuts_.value(id).isEmpty()) tip += QStringLiteral("  ·  %1").arg(shortcuts_.value(id));
         b->setToolTip(tip);
@@ -139,7 +151,8 @@ void ToolsPanel::relayout(Group& g) {
     g.header->setVisible(any && !(fav && !filter_.isEmpty()));
     g.body->setVisible(any && !g.collapsed && !(fav && !filter_.isEmpty()));
     g.grid->activate(); g.body->updateGeometry();
-    if (layout()) layout()->activate();
+    if (content_ && content_->layout()) content_->layout()->activate();
+    if (content_) content_->adjustSize();
 }
 
 void ToolsPanel::rebuildFavourites() {

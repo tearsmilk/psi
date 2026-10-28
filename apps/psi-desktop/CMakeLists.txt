@@ -1,6 +1,12 @@
 file(GLOB PSI_APP_SRC CONFIGURE_DEPENDS *.cpp *.h)
-qt_add_executable(psi ${PSI_APP_SRC})
-target_link_libraries(psi PRIVATE psi_ui)
+list(REMOVE_ITEM PSI_APP_SRC "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
+# main window, docks and pages as a library so the UI tests can drive the real window
+qt_add_library(psi_app STATIC ${PSI_APP_SRC})
+target_link_libraries(psi_app PUBLIC psi_ui)
+target_include_directories(psi_app PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+qt_add_executable(psi main.cpp)
+target_link_libraries(psi PRIVATE psi_app)
 set_target_properties(psi PROPERTIES
   OUTPUT_NAME "psi"
   MACOSX_BUNDLE TRUE

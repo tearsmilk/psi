@@ -32,6 +32,8 @@ public:
     bool openPath(const QString& path);        // .psi or .dxf
     void importDxf(const QString& path);
     void loadDemo();
+    enum Page { PageWelcome = 0, PageDraft = 1, PageSheets = 2, PageSketch = 3, PageInterior = 4 };
+    void showPage(Page p);
 
 protected:
     void closeEvent(QCloseEvent*) override;
@@ -40,7 +42,6 @@ protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
-    enum Page { PageWelcome = 0, PageDraft = 1, PageSheets = 2, PageSketch = 3, PageInterior = 4 };
     void buildActions();
     void buildMenus();
     void buildWorkspaceBar();
@@ -50,7 +51,6 @@ private:
     QAction* action(const QString& id, const QString& text, const QString& icon, const QKeySequence& key, const std::function<void()>& fn);
     ToolContext makeContext();
     void startTool(const QString& id);
-    void showPage(Page p);
 
     void newProject();
     void openProject();
@@ -86,6 +86,7 @@ private:
     PropertiesPanel* props_ = nullptr;
     TreePanel* tree_ = nullptr;
     QList<QDockWidget*> docks_;
+    QByteArray draftDockState_;      // dock layout of «Черчение», kept while another workspace hides the docks
     QToolBar* toolbar_ = nullptr;
     QLineEdit* command_ = nullptr;
     QLabel* prompt_ = nullptr;

@@ -8,7 +8,7 @@
   (`building.*` model / rooms / schedules in psi_core, `interior_view.*` plan canvas in psi_ui), `io/native` (`.psi` = ZIP + JSON,
   schema `kSchemaVersion`), `io/dxf`, `io/pdf`, `rendering/` (renderer + `Viewport`), `ui/` (theme, icons, `inline_editor`, `canvas` = shared
   2D canvas of the sketch / interior workspaces), `apps/psi-desktop/` (main window, docks, sheets / sketch / interior pages,
-  `workspace_common.*` snapshot undo + side sections, dialogs, welcome, `--selftest` incl. `selftest_modules.cpp`), `tests/` (QTest, run offscreen),
+  `workspace_common.*` snapshot undo + side sections, dialogs, welcome, `--selftest` incl. `selftest_modules.cpp`; everything but `main.cpp` is the static lib `psi_app` so `tests/integration/test_main_window.cpp` drives the real window), `tests/` (QTest, run offscreen),
   `packaging/macos/`, `docs/`.
 - Build: `cmake --preset release && cmake --build --preset release && ctest --preset release`; `psi --selftest` must stay green.
   Build must be warning-free (`-Wall -Wextra`), `QT_NO_KEYWORDS` (use `Q_SIGNALS` / `Q_EMIT`).

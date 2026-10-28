@@ -11,6 +11,7 @@ class QGridLayout;
 class QLineEdit;
 class QLabel;
 class QToolButton;
+class QScrollArea;
 
 namespace psi {
 
@@ -49,10 +50,14 @@ private:
     QStringList recent_;
     QLineEdit* search_ = nullptr;
     QToolButton* compactBtn_ = nullptr;
+    QScrollArea* scroll_ = nullptr;                          // groups live inside; wheel scrolls even over buttons
+    QWidget* content_ = nullptr;
     QString filter_;
     QString active_;
     bool compact_ = false;
     bool iconsReady_ = false;
+public:
+    QScrollArea* scrollArea() const { return scroll_; }
 };
 
 // Layers: visibility, lock, name, colour, weight; current layer; add / remove / edit via LayerCommand.
