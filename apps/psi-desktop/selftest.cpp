@@ -120,6 +120,8 @@ int runSelfTest() {
         check(ms < 1500, QStringLiteral("50 000 линий: %1 мс").arg(ms));
     }
 
+    runModulesSelfTest([](bool ok, const QString& what) { check(ok, what); });
+
     out() << (fails ? QStringLiteral("Самопроверка: %1 ошибок\n").arg(fails) : QStringLiteral("Самопроверка пройдена\n"));
     out().flush();
     return fails ? 1 : 0;

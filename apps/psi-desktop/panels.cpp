@@ -1,4 +1,7 @@
 #include "panels.h"
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "dialogs.h"
 #include "modules/draft/tool.h"
 #include "rendering/viewport.h"
@@ -438,6 +441,25 @@ void TreePanel::refresh() {
         sheets->addChild(si);
     }
     root->addChild(sheets);
+    // эскизы и здания хранятся как части .psi (sketches/*.json, interior/*.json)
+    auto partsNode = [&](const QString& prefix, const QString& title, const QString& icon, const QString& kind) {
+        const auto& parts = project_.foreignParts();
+        std::vector<std::pair<QString, QString>> items;
+        for (auto it = parts.cbegin(); it != parts.cend(); ++it) {
+            if (!it.key().startsWith(prefix)) continue;
+            QJsonObject o = QJsonDocument::fromJson(it.value()).object();
+            QString label = o.value("name").toString(it.key().mid(prefix.size()));
+            if (kind == "sketch") label += QStringLiteral("  (%1 об., %2 огр.)").arg(o.value("entities").toArray().size()).arg(o.value("constraints").toArray().size());
+            else label += QStringLiteral("  (этажей: %1)").arg(o.value("floors").toArray().size());
+            items.push_back({it.key(), label});
+        }
+        if (items.empty()) return;
+        auto* node = new QTreeWidgetItem({QStringLiteral("%1  (%2)").arg(title).arg(items.size())}); node->setIcon(0, Icons::icon(icon, pal.text));
+        for (const auto& [key, label] : items) { auto* it = new QTreeWidgetItem({label}); it->setData(0, Qt::UserRole, kind); it->setData(0, Qt::UserRole + 1, key); node->addChild(it); }
+        root->addChild(node); node->setExpanded(true);
+    };
+    partsNode(QStringLiteral("sketches/"), QStringLiteral("Эскизы"), "sketch", "sketch");
+    partsNode(QStringLiteral("interior/"), QStringLiteral("Интерьер"), "interior", "interior");
     tree_->addTopLevelItem(root);
     root->setExpanded(true); drawing->setExpanded(true); sheets->setExpanded(true);
     updating_ = false;

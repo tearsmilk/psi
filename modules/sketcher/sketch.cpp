@@ -392,8 +392,7 @@ SolveResult Sketch::solve(bool computeDof, int maxIterations) {
     return out;
 }
 
-int Sketch::degreesOfFreedom() {
-    if (dofRevision_ == revision_ && dofCache_ >= 0) return dofCache_;
+void Sketch::computeDof() {
     Residuals R;
     collectParams(R.params, R.paramsOfEntity);
     buildResiduals(*this, R, entities_, constraints_);
@@ -420,8 +419,26 @@ int Sketch::degreesOfFreedom() {
         if (norm > 1e-6 * norm0) { for (double& v : row) v /= norm; basis.push_back(row); ++rank; }
     }
     dofCache_ = int(n) - rank;
+    // параметр k закреплён ⇔ e_k лежит в пространстве строк якобиана
+    freeCache_.assign(entities_.size(), false);
+    for (size_t ei = 0; ei < entities_.size(); ++ei) {
+        for (int pj : R.paramsOfEntity[ei]) {
+            double inSpace = 0;
+            for (const auto& q : basis) inSpace += q[size_t(pj)] * q[size_t(pj)];
+            if (1.0 - inSpace > 1e-6) { freeCache_[ei] = true; break; }
+        }
+    }
     dofRevision_ = revision_;
+}
+
+int Sketch::degreesOfFreedom() {
+    if (dofRevision_ != revision_ || dofCache_ < 0) computeDof();
     return dofCache_;
+}
+
+const std::vector<bool>& Sketch::freeEntities() {
+    if (dofRevision_ != revision_ || dofCache_ < 0) computeDof();
+    return freeCache_;
 }
 
 void Sketch::dragPoint(const Ref& r, Point to) {

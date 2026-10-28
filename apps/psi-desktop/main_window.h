@@ -21,6 +21,8 @@ class ToolsPanel;
 class LayersPanel;
 class PropertiesPanel;
 class TreePanel;
+class SketchPage;
+class InteriorPage;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -37,7 +39,7 @@ protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
-    enum Page { PageWelcome = 0, PageDraft = 1, PageSheets = 2 };
+    enum Page { PageWelcome = 0, PageDraft = 1, PageSheets = 2, PageSketch = 3, PageInterior = 4 };
     void buildActions();
     void buildMenus();
     void buildWorkspaceBar();
@@ -71,6 +73,9 @@ private:
     WelcomePage* welcome_ = nullptr;
     Viewport* view_ = nullptr;
     SheetsPage* sheets_ = nullptr;
+    SketchPage* sketch_ = nullptr;
+    InteriorPage* interior_ = nullptr;
+    QLabel* dofLbl_ = nullptr;
     QWidget* draftPage_ = nullptr;
     ToolsPanel* tools_ = nullptr;
     LayersPanel* layers_ = nullptr;

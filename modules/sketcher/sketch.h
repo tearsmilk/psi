@@ -98,6 +98,7 @@ public:
     // решатель
     SolveResult solve(bool computeDof = false, int maxIterations = 60);
     int degreesOfFreedom();                        // ранг якобиана; дорого — вызывать не чаще раза в кадр
+    const std::vector<bool>& freeEntities();      // по индексу объекта: true = остались свободные параметры
     double residual(const Constraint& c) const;    // суммарная невязка ограничения в текущем положении
     void dragPoint(const Ref& r, Point to);        // перенести точку и перерешать (мягко)
     void moveEntity(quint64 id, Vec d);
@@ -116,11 +117,13 @@ public:
 
     struct Residuals;  // внутреннее: невязки для решателя
 private:
+    void computeDof();
     void collectParams(std::vector<double*>& params, std::vector<std::vector<int>>& byEntity);
     std::vector<SketchEntity> entities_;
     std::vector<Constraint> constraints_;
     quint64 nextId_ = 1;
     int dofCache_ = -1;
+    std::vector<bool> freeCache_;
     quint64 dofRevision_ = 0, revision_ = 0;
 };
 

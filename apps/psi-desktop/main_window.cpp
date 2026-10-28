@@ -6,6 +6,8 @@
 #include "panels.h"
 #include "rendering/viewport.h"
 #include "sheets_page.h"
+#include "sketch_page.h"
+#include "interior_page.h"
 #include "ui/icons.h"
 #include "ui/theme.h"
 #include "welcome.h"
@@ -68,9 +70,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         v->addWidget(bar);
     }
     sheets_ = new SheetsPage(project_);
+    sketch_ = new SketchPage(project_);
+    interior_ = new InteriorPage(project_);
     stack_->addWidget(welcome_);
     stack_->addWidget(draftPage_);
     stack_->addWidget(sheets_);
+    stack_->addWidget(sketch_);
+    stack_->addWidget(interior_);
     setCentralWidget(stack_);
 
     buildActions();
@@ -90,6 +96,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(welcome_, &WelcomePage::importDxfRequested, this, [this] { importDxf(QString()); });
     connect(welcome_, &WelcomePage::demoRequested, this, &MainWindow::loadDemo);
     connect(sheets_, &SheetsPage::exportPdfRequested, this, &MainWindow::exportPdf);
+    // рабочие пространства «Эскиз» и «Интерьер»: своя отмена, выдача в чертёж, статус
+    connect(sketch_, &SketchPage::undoChanged, this, &MainWindow::updateUndoRedo);
+    connect(interior_, &InteriorPage::undoChanged, this, &MainWindow::updateUndoRedo);
+    connect(sketch_, &SketchPage::statusMessage, this, [this](const QString& t) { statusBar()->showMessage(t, 5000); });
+    connect(interior_, &InteriorPage::statusMessage, this, [this](const QString& t) { statusBar()->showMessage(t, 5000); });
+    connect(sketch_, &SketchPage::exported, this, [this](int) { showPage(PageDraft); view_->zoomExtents(); });
+    connect(interior_, &InteriorPage::exported, this, [this](int) { showPage(PageDraft); view_->zoomExtents(); });
+    connect(sketch_, &SketchPage::dofChanged, this, [this](int dof) { dofLbl_->setText(dof >= 0 ? QStringLiteral("Свободных степеней: %1").arg(dof) : QString()); dofLbl_->setVisible(stack_->currentIndex() == PageSketch); });
+    connect(sketch_, &SketchPage::sketchesChanged, this, [this] { if (tree_) tree_->refresh(); });
+    connect(interior_, &InteriorPage::buildingChanged, this, [this] { if (tree_) tree_->refresh(); });
     connect(command_, &QLineEdit::returnPressed, this, &MainWindow::runCommandLine);
     connect(view_, &Viewport::cursorMoved, this, [this](Point) { updateStatus(); });
     connect(view_, &Viewport::promptChanged, this, [this](const QString& t) { prompt_->setText(t.isEmpty() ? QStringLiteral("Выберите инструмент") : t); });
@@ -135,8 +151,18 @@ void MainWindow::buildActions() {
     action("demo", QStringLiteral("Открыть демонстрацию"), "", QKeySequence(), [this] { loadDemo(); });
     action("quit", QStringLiteral("Выход"), "", QKeySequence::Quit, [this] { close(); });
 
-    action("undo", QStringLiteral("Отменить"), "undo", QKeySequence::Undo, [this] { project_.commands().undo(); view_->invalidate(); });
-    action("redo", QStringLiteral("Повторить"), "redo", QKeySequence("Ctrl+Shift+Z"), [this] { project_.commands().redo(); view_->invalidate(); });
+    action("undo", QStringLiteral("Отменить"), "undo", QKeySequence::Undo, [this] {
+        if (stack_->currentIndex() == PageSketch) sketch_->undo();
+        else if (stack_->currentIndex() == PageInterior) interior_->undo();
+        else project_.commands().undo();
+        view_->invalidate();
+    });
+    action("redo", QStringLiteral("Повторить"), "redo", QKeySequence("Ctrl+Shift+Z"), [this] {
+        if (stack_->currentIndex() == PageSketch) sketch_->redo();
+        else if (stack_->currentIndex() == PageInterior) interior_->redo();
+        else project_.commands().redo();
+        view_->invalidate();
+    });
     action("delete", QStringLiteral("Удалить"), "delete", QKeySequence::Delete, [this] { deleteSelection(); });
     action("selectAll", QStringLiteral("Выделить всё"), "", QKeySequence::SelectAll, [this] { view_->selectAll(); });
     action("deselect", QStringLiteral("Снять выделение"), "", QKeySequence("Ctrl+Shift+A"), [this] { view_->clearSelection(); });
@@ -170,6 +196,8 @@ void MainWindow::buildActions() {
 
     action("ws.draft", QStringLiteral("Черчение"), "draft", QKeySequence("Ctrl+1"), [this] { showPage(PageDraft); });
     action("ws.sheets", QStringLiteral("Листы"), "sheet", QKeySequence("Ctrl+2"), [this] { showPage(PageSheets); });
+    action("ws.sketch", QStringLiteral("Эскиз"), "sketch", QKeySequence("Ctrl+3"), [this] { showPage(PageSketch); });
+    action("ws.interior", QStringLiteral("Интерьер"), "interior", QKeySequence("Ctrl+4"), [this] { showPage(PageInterior); });
     action("ws.welcome", QStringLiteral("Начальный экран"), "", QKeySequence("Ctrl+0"), [this] { showPage(PageWelcome); });
     action("help", QStringLiteral("Справка по вводу"), "", QKeySequence::HelpContents, [this] {
         QMessageBox::information(this, QStringLiteral("Ввод координат"),
@@ -197,7 +225,7 @@ void MainWindow::buildMenus() {
     QMenu* toolsM = mb->addMenu(QStringLiteral("Инструменты"));
     for (const char* id : {"move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode"}) toolsM->addAction(actions_[QString("tool.") + id]);
     QMenu* window = mb->addMenu(QStringLiteral("Окно"));
-    add(window, {"ws.welcome", "ws.draft", "ws.sheets"});
+    add(window, {"ws.welcome", "ws.draft", "ws.sheets", "ws.sketch", "ws.interior"});
     window->addSeparator();
     // dock toggles are appended in buildDocks()
     QMenu* help = mb->addMenu(QStringLiteral("Справка"));
@@ -218,10 +246,10 @@ void MainWindow::buildWorkspaceBar() {
     const std::vector<Ws> list{
         {"draft", QStringLiteral("Черчение"), "draft", true, QStringLiteral("2D-черчение: линии, размеры, слои")},
         {"sheets", QStringLiteral("Листы"), "sheet", true, QStringLiteral("Листы, основная надпись, PDF")},
-        {"sketch", QStringLiteral("Эскиз"), "sketch", false, QStringLiteral("Параметрический эскиз — этап 02")},
+        {"sketch", QStringLiteral("Эскиз"), "sketch", true, QStringLiteral("Параметрический эскиз: примитивы, ограничения, решатель")},
         {"model", QStringLiteral("Модель"), "model", false, QStringLiteral("3D-моделирование — этап 03")},
         {"assembly", QStringLiteral("Сборка"), "assembly", false, QStringLiteral("Сборки — этап 04")},
-        {"interior", QStringLiteral("Интерьер"), "interior", false, QStringLiteral("Интерьер — этап 05")},
+        {"interior", QStringLiteral("Интерьер"), "interior", true, QStringLiteral("Интерьер: стены, проёмы, помещения, мебель, ведомости")},
         {"drawing", QStringLiteral("Чертёж 3D"), "drawing", false, QStringLiteral("Виды с модели — этап 06")}};
     auto* logo = new QLabel; logo->setPixmap(Icons::logo(22, pal.onAccent, pal.accent)); logo->setContentsMargins(8, 0, 10, 0);
     toolbar_->addWidget(logo);
@@ -235,6 +263,8 @@ void MainWindow::buildWorkspaceBar() {
         wsButtons_[w.id] = b;
         if (w.id == "draft") connect(b, &QToolButton::clicked, this, [this] { showPage(PageDraft); });
         if (w.id == "sheets") connect(b, &QToolButton::clicked, this, [this] { showPage(PageSheets); });
+        if (w.id == "sketch") connect(b, &QToolButton::clicked, this, [this] { showPage(PageSketch); });
+        if (w.id == "interior") connect(b, &QToolButton::clicked, this, [this] { showPage(PageInterior); });
     }
     auto* spacer = new QWidget; spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolbar_->addWidget(spacer);
@@ -278,6 +308,8 @@ void MainWindow::buildStatusBar() {
     for (QLabel* l : {coords_, unitLbl_, snapLbl_, toolLbl_}) l->setObjectName("Hint");
     statusBar()->addWidget(coords_);
     statusBar()->addWidget(toolLbl_, 1);
+    dofLbl_ = new QLabel; dofLbl_->setObjectName("Hint"); dofLbl_->hide();
+    statusBar()->addPermanentWidget(dofLbl_);
     statusBar()->addPermanentWidget(snapLbl_);
     statusBar()->addPermanentWidget(unitLbl_);
 }
@@ -367,7 +399,13 @@ void MainWindow::showPage(Page p) {
     for (QDockWidget* d : docks_) d->setVisible(draft && !d->property("userHidden").toBool());
     if (wsButtons_.contains("draft")) wsButtons_["draft"]->setChecked(p == PageDraft);
     if (wsButtons_.contains("sheets")) wsButtons_["sheets"]->setChecked(p == PageSheets);
+    if (wsButtons_.contains("sketch")) wsButtons_["sketch"]->setChecked(p == PageSketch);
+    if (wsButtons_.contains("interior")) wsButtons_["interior"]->setChecked(p == PageInterior);
+    if (dofLbl_) dofLbl_->setVisible(p == PageSketch);
     if (p == PageSheets) sheets_->refresh();
+    if (p == PageSketch) sketch_->activate();
+    if (p == PageInterior) interior_->activate();
+    updateUndoRedo();
     if (p == PageDraft) { if (!view_->tool()) startTool("select"); view_->setFocus(); }
 }
 
@@ -583,11 +621,14 @@ void MainWindow::updateTitle() {
 }
 
 void MainWindow::updateUndoRedo() {
-    CommandStack& s = project_.commands();
-    actions_["undo"]->setEnabled(s.canUndo());
-    actions_["redo"]->setEnabled(s.canRedo());
-    actions_["undo"]->setText(s.canUndo() ? QStringLiteral("Отменить: %1").arg(s.undoText()) : QStringLiteral("Отменить"));
-    actions_["redo"]->setText(s.canRedo() ? QStringLiteral("Повторить: %1").arg(s.redoText()) : QStringLiteral("Повторить"));
+    bool canUndo, canRedo; QString undoText, redoText;
+    if (stack_ && stack_->currentIndex() == PageSketch) { canUndo = sketch_->canUndo(); canRedo = sketch_->canRedo(); undoText = sketch_->undoText(); redoText = sketch_->redoText(); }
+    else if (stack_ && stack_->currentIndex() == PageInterior) { canUndo = interior_->canUndo(); canRedo = interior_->canRedo(); undoText = interior_->undoText(); redoText = interior_->redoText(); }
+    else { CommandStack& s = project_.commands(); canUndo = s.canUndo(); canRedo = s.canRedo(); undoText = s.undoText(); redoText = s.redoText(); }
+    actions_["undo"]->setEnabled(canUndo);
+    actions_["redo"]->setEnabled(canRedo);
+    actions_["undo"]->setText(canUndo ? QStringLiteral("Отменить: %1").arg(undoText) : QStringLiteral("Отменить"));
+    actions_["redo"]->setText(canRedo ? QStringLiteral("Повторить: %1").arg(redoText) : QStringLiteral("Повторить"));
     view_->invalidate();
 }
 
