@@ -17,8 +17,9 @@ namespace psi {
 
 // STEPControl печатает статистику переноса в консоль — оставляем только предупреждения и ошибки.
 static void quietOcct() {
-    const Message_SequenceOfPrinters& printers = Message::DefaultMessenger()->Printers();
-    for (Message_SequenceOfPrinters::Iterator it(printers); it.More(); it.Next()) it.Value()->SetTraceLevel(Message_Warning);
+    // тип последовательности отличается между OCCT 7.x и 8.x — обходим через auto
+    const auto& printers = Message::DefaultMessenger()->Printers();
+    for (auto it = printers.begin(); it != printers.end(); ++it) (*it)->SetTraceLevel(Message_Warning);
 }
 
 QString StepReport::summary() const {
