@@ -23,9 +23,14 @@ jobs:
   build:
     name: Сборка и тесты (macOS 11+, Intel)
     runs-on: macos-15-intel
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
+      VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      VCPKG_OVERLAY_TRIPLETS: ${{ github.workspace }}/packaging/vcpkg-triplets
+      VCPKG_DEFAULT_TRIPLET: x64-osx-11
+      VCPKG_TARGET_TRIPLET: x64-osx-11
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +47,39 @@ jobs:
       - name: Ninja
         run: brew install ninja || true
 
+      # ---- Open CASCADE через vcpkg: манифест vcpkg.json (baseline закреплён), оверлей-триплет x64-osx-11
+      # (цель macOS 11.0, x86_64, статические библиотеки). Бинарники vcpkg кэшируются по хэшу манифеста и триплета —
+      # первая сборка OCCT занимает ~30–40 мин, дальнейшие берут архивы из кэша.
+      - name: Кэш vcpkg (бинарники OCCT)
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-x64-osx-11-${{ hashFiles('vcpkg.json', 'packaging/vcpkg-triplets/x64-osx-11.cmake') }}
+          restore-keys: |
+            vcpkg-x64-osx-11-
+
+      - name: vcpkg + Open CASCADE
+        run: |
+          set -euo pipefail
+          BASELINE="$(python3 -c "import json; print(json.load(open('vcpkg.json'))['builtin-baseline'])")"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          if [[ ! -x "$VCPKG_ROOT/vcpkg" ]]; then
+            git init -q "$VCPKG_ROOT"
+            git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
+            git -C "$VCPKG_ROOT" fetch -q --depth 1 origin "$BASELINE"
+            git -C "$VCPKG_ROOT" checkout -q FETCH_HEAD
+            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          "$VCPKG_ROOT/vcpkg" install --triplet x64-osx-11 --overlay-triplets="$VCPKG_OVERLAY_TRIPLETS" --x-install-root=vcpkg_installed
+          ls vcpkg_installed/x64-osx-11/lib | grep -c '^libTK' || { echo "OCCT не установлен"; exit 1; }
+        # Запасной путь, если порт vcpkg сломается: собрать OCCT 7.8 вручную с той же целью macOS 11.0 и закэшировать:
+        #   git clone --depth 1 -b V7_8_1 https://github.com/Open-Cascade-SAS/OCCT occt && cmake -S occt -B occt/build -G Ninja \
+        #     -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+        #     -DBUILD_LIBRARY_TYPE=Static -DUSE_FREEIMAGE=OFF -DUSE_RAPIDJSON=OFF -DUSE_TBB=OFF -DUSE_TK=OFF -DUSE_DRACO=OFF \
+        #     -DBUILD_MODULE_Draw=OFF -DBUILD_MODULE_Visualization=OFF -DBUILD_MODULE_ApplicationFramework=OFF \
+        #     -DCMAKE_INSTALL_PREFIX="$HOME/occt" && cmake --build occt/build --target install
+        #   затем actions/cache на ~/occt и в build_macos.sh: CMAKE_PREFIX_PATH="$QT_ROOT;$HOME/occt" без VCPKG_ROOT.
+
       - name: Версия
         id: ver
         run: |
@@ -55,6 +93,7 @@ jobs:
         env:
           QT_ROOT: ${{ env.QT_ROOT_DIR }}
           PSI_VERSION: ${{ steps.ver.outputs.version }}
+          PSI_WITH_OCCT: "ON"
         run: |
           chmod +x packaging/macos/build_macos.sh
           packaging/macos/build_macos.sh
@@ -82,6 +121,7 @@ jobs:
             Пси ${{ steps.ver.outputs.version }} — macOS 11+ (Intel x64, на Apple Silicon через Rosetta 2).
 
             Этап 00–01: черчение, слои, привязки, размеры, листы с основной надписью, точный векторный PDF, импорт/экспорт DXF, собственный формат `.psi`.
+            Этап 02: параметрический эскиз и «Модель» на Open CASCADE — выдавливание, вращение, отверстия, скругления, фаски, массивы, зеркало, булевы операции, STEP / STL, 3D-вид. Этап 05: «Интерьер».
           files: build/Psi-*.dmg
           draft: false
           prerelease: ${{ contains(steps.ver.outputs.version, '-') }}

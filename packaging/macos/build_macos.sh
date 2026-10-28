@@ -9,10 +9,19 @@ BUILD="${BUILD_DIR:-$ROOT/build}"
 VERSION="${PSI_VERSION:-$(sed -n 's/^project(PSI VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)}"
 QT_ROOT="${QT_ROOT:-${QT_ROOT_DIR:-}}"
 if [[ -n "$QT_ROOT" ]]; then export PATH="$QT_ROOT/bin:$PATH"; CMAKE_PREFIX="-DCMAKE_PREFIX_PATH=$QT_ROOT"; else CMAKE_PREFIX=""; fi
+# Open CASCADE: через vcpkg (VCPKG_ROOT + оверлей-триплет x64-osx-11, см. .github/workflows/psi-macos.yml) или из CMAKE_PREFIX_PATH.
+# PSI_WITH_OCCT=ON требует ядро, OFF собирает без «Модели», пусто — как найдёт CMake.
+OCCT_ARGS=()
+if [[ -n "${VCPKG_ROOT:-}" && -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]]; then
+  OCCT_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" "-DVCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET:-x64-osx-11}"
+              "-DVCPKG_OVERLAY_TRIPLETS=${VCPKG_OVERLAY_TRIPLETS:-$ROOT/packaging/vcpkg-triplets}" "-DVCPKG_INSTALLED_DIR=$ROOT/vcpkg_installed")
+fi
+if [[ -n "${PSI_WITH_OCCT:-}" ]]; then OCCT_ARGS+=("-DPSI_WITH_OCCT=$PSI_WITH_OCCT"); fi
 
 echo "== Пси $VERSION: configure"
 cmake -S "$ROOT" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_OSX_ARCHITECTURES=x86_64 -DPSI_BUILD_TESTS=ON $CMAKE_PREFIX
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_OSX_ARCHITECTURES=x86_64 -DPSI_BUILD_TESTS=ON $CMAKE_PREFIX "${OCCT_ARGS[@]}"
+grep -q "PSI_WITH_OCCT:BOOL=ON" "$BUILD/CMakeCache.txt" && echo "== Open CASCADE: включено" || echo "== Open CASCADE: выключено (рабочее пространство «Модель» недоступно)"
 echo "== build"
 cmake --build "$BUILD" --parallel
 echo "== tests"

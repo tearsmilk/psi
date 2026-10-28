@@ -10,3 +10,6 @@ compile_commands.json
 .vscode/
 .idea/
 __pycache__/
+.vcpkg/
+.vcpkg-cache/
+vcpkg_installed/

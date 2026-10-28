@@ -1,5 +1,6 @@
 // Пси (PSI) — Screens page: Начальный экран (Light / Dark), Черчение (Light / Dark), Черчение — инструмент активен,
-// Листы, Параметры документа, Настройки (тема / акцент / горячие клавиши), Импорт DXF (прогресс + отчёт), Экспорт PDF.
+// Листы, Эскиз, Модель (3D на OCCT: дерево построения, 3D-вид, свойства), Интерьер, Параметры документа, Настройки
+// (тема / акцент / горячие клавиши), Импорт DXF (прогресс + отчёт), Экспорт PDF, диалоги операций модели.
 // Run after 01_ui_kit.js (uses the «Psi — Light» / «Psi — Dark» collections).
 let page = figma.root.children.find(p => p.name === "Screens");
 if (!page) { page = figma.createPage(); page.name = "Screens"; }
@@ -40,7 +41,7 @@ function field(label, value, w = 180) { const r = al("HORIZONTAL", {gap: 10, ali
 function workspaceBar(active) {
   const ws = al("HORIZONTAL", {name: "Workspace bar", pad: [6, 12, 6, 12], gap: 4, fill: "panel", align: "CENTER"}); fixed(ws, 1440, 44); ws.strokes = [fill("border")]; ws.strokeWeight = 1;
   ws.appendChild(txt("Ψ", {family: SERIF, size: 20, color: "accent"})); const sp0 = al("HORIZONTAL"); sp0.resize(8, 4); ws.appendChild(sp0);
-  for (const [t, en] of [["Черчение", true], ["Листы", true], ["Эскиз", true], ["Модель", false], ["Сборка", false], ["Интерьер", true], ["Чертёж 3D", false]]) {
+  for (const [t, en] of [["Черчение", true], ["Листы", true], ["Эскиз", true], ["Модель", true], ["Сборка", false], ["Интерьер", true], ["Чертёж 3D", false]]) {
     const on = t === active; const b = al("HORIZONTAL", {pad: [5, 11, 5, 11], radius: 7, fill: on ? "selected" : undefined}); b.appendChild(txt(t, {style: on ? "Medium" : "Regular", color: en ? "text" : "faint"})); ws.appendChild(b);
   }
   const sp = al("HORIZONTAL"); sp.layoutGrow = 1; ws.appendChild(sp);
@@ -286,6 +287,62 @@ function sketchScreen(name, o = {}) {
   body.appendChild(right); f.appendChild(body); f.appendChild(statusBar("Эскиз", o.conflict ? "" : "Свободных степеней: 3")); return f;
 }
 
+// ---------------------------------------------------------------- Модель (этап 02, 3D на OCCT)
+// 3D-вид: программный растеризатор — плита 800×400×100 в изометрии с отверстием, сетка XY, триада, выбранная грань акцентом.
+function modelCanvas(w, h, o = {}) {
+  const c = figma.createFrame(); c.name = "3D view"; c.resize(w, h); c.fills = [fill("canvas")]; c.clipsContent = true;
+  const cx = w / 2 - 20, cy = h / 2 + 40;
+  // изометрические оси: X → вправо-вниз, Y → вправо-вверх, Z → вверх
+  const P = (x, y, z) => [cx + (x - y) * 0.866 * 0.42, cy + (x + y) * 0.5 * 0.42 - z * 0.42];
+  const poly = (pts, fillName, strokeName, op) => { const v = figma.createVector(); const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + " Z"; v.vectorPaths = [{windingRule: "NONZERO", data: d}]; v.fills = fillName ? [fill(fillName, op)] : []; v.strokes = strokeName ? [fill(strokeName)] : []; v.strokeWeight = 1; c.appendChild(v); return v; };
+  // сетка плоскости XY под телом
+  for (let i = -6; i <= 10; i++) { const a = P(i * 100, -600, 0), b = P(i * 100, 1000, 0); c.appendChild(line(a[0], a[1], b[0], b[1], i % 5 === 0 ? "grid-major" : "grid", 1)); }
+  for (let j = -6; j <= 10; j++) { const a = P(-600, j * 100, 0), b = P(1000, j * 100, 0); c.appendChild(line(a[0], a[1], b[0], b[1], j % 5 === 0 ? "grid-major" : "grid", 1)); }
+  const L = 800, W = 400, H = 100;
+  const top = [P(0, 0, H), P(L, 0, H), P(L, W, H), P(0, W, H)];
+  const front = [P(0, 0, 0), P(L, 0, 0), P(L, 0, H), P(0, 0, H)];
+  const side = [P(L, 0, 0), P(L, W, 0), P(L, W, H), P(L, 0, H)];
+  poly(front, "muted", "ink", 0.55); poly(side, "muted", "ink", 0.75); poly(top, o.faceSelected ? "accent" : "faint", "ink", o.faceSelected ? 0.55 : 0.6);
+  // отверстие Ø20 на верхней грани (эллипс в изометрии) и массив 3×
+  for (const hx of o.pattern ? [300, 400, 500] : [400]) { const h = figma.createEllipse(); const [ex, ey] = P(hx, 200, H); h.resize(16, 9); h.x = ex - 8; h.y = ey - 4.5; h.fills = [fill("ink", 0.8)]; c.appendChild(h); }
+  // триада осей
+  const o0 = [44, h - 44]; for (const [dx, dy, col, n] of [[22, 12, "accent", "X"], [22, -12, "grid-major", "Y"], [0, -26, "muted", "Z"]]) { c.appendChild(line(o0[0], o0[1], o0[0] + dx, o0[1] + dy, col, 1.6)); const t = txt(n, {size: 9, color: col}); t.x = o0[0] + dx * 1.3 - 4; t.y = o0[1] + dy * 1.3 - 6; c.appendChild(t); }
+  if (o.empty) { const t = txt("Создайте эскиз и выдавите его — тело появится здесь", {family: SERIF, size: 15, color: "muted"}); t.x = w / 2 - 230; t.y = h / 2 - 40; c.appendChild(t); }
+  return c;
+}
+function treeRow(glyph, name, o = {}) {
+  const r = al("HORIZONTAL", {gap: 8, pad: [4, 8, 4, 8], radius: 6, fill: o.selected ? "selected" : undefined, align: "CENTER"}); r.resize(230, 26); r.primaryAxisSizingMode = "FIXED";
+  const b = figma.createRectangle(); b.resize(12, 12); b.cornerRadius = 3; b.fills = [fill(o.suppressed ? "input" : "accent")]; b.strokes = [fill("border")]; r.appendChild(b);
+  r.appendChild(txt(glyph, {size: 12, color: o.error ? "accent" : o.suppressed ? "faint" : "text"})); r.appendChild(txt(name, {size: 12, color: o.error ? "accent" : o.suppressed ? "faint" : "text"})); return r;
+}
+function modelScreen(name, o = {}) {
+  const f = al("VERTICAL", {name, gap: 0, fill: "bg"}); fixed(f, 1440, 900); f.appendChild(workspaceBar("Модель"));
+  const body = al("HORIZONTAL", {gap: 0}); fixed(body, 1440, 830);
+  const left = al("VERTICAL", {gap: 0, fill: "panel"}); fixed(left, 250, 830);
+  const s1 = section("Детали", 250); { const r = al("HORIZONTAL", {pad: [5, 8, 5, 8], radius: 6, fill: "selected"}); r.resize(230, 26); r.primaryAxisSizingMode = "FIXED"; r.appendChild(txt("Плита  (операций: 4, тел: 1)", {size: 12})); s1.appendChild(r); }
+  const sb = al("HORIZONTAL", {gap: 4}); for (const g of ["+", "−"]) sb.appendChild(toolBtn(g)); const rn = al("HORIZONTAL", {pad: [5, 8, 5, 8], radius: 6, stroke: "border"}); rn.appendChild(txt("Имя…", {size: 12})); sb.appendChild(rn); s1.appendChild(sb); left.appendChild(s1);
+  const s2 = section("Дерево построения", 250);
+  const rows = o.tree || [["▱", "Эскиз 1"], ["⤒", "Выдавливание 1", {selected: !o.errorRow}], ["◎", "Отверстие 1"], ["⋮⋮", "Массив линейный 1"]];
+  for (const [g, n, ro] of rows) s2.appendChild(treeRow(g, n, ro || {}));
+  if (o.errorRow) s2.appendChild(treeRow("◜", "Скругление 1", {error: true, selected: true}));
+  const tb = al("HORIZONTAL", {gap: 4}); for (const g of ["↑", "↓", "≡", "✕", "↻"]) tb.appendChild(toolBtn(g)); s2.appendChild(tb); left.appendChild(s2);
+  const s3 = section("Операции", 250); s3.appendChild(glyphGrid(["▱", "⤒", "↻", "◎", "◜", "◿", "⋮⋮", "✲", "⇋", "⊔", "◇", "↕", "▣"], 230, o.activeOp)); left.appendChild(s3);
+  const s4 = section("Вид", 250); s4.appendChild(glyphGrid(["Изо", "Спереди", "Сверху", "Справа", "Сзади", "Снизу", "Слева", "⛶"], 230)); s4.appendChild(glyphGrid(["⬡", "▦", "╱", "▱", "╲", "·", "⬢"], 230, "▱")); left.appendChild(s4);
+  const s5 = section("Файлы", 250); s5.appendChild(btn("Импорт STEP / STL…", false)); s5.appendChild(btn("Экспорт STEP…", true)); s5.appendChild(btn("Экспорт STL…", false));
+  s5.appendChild(txt("ЛКМ — выбор и орбита, Shift+ЛКМ / ПКМ — панорама, колесо — зум. Выберите грань, затем «Отверстие» или «Эскиз».", {size: 11, color: "muted", w: 230})); left.appendChild(s5);
+  body.appendChild(left);
+  const mid = al("VERTICAL", {gap: 0}); fixed(mid, 890, 830); mid.appendChild(modelCanvas(890, 800, o));
+  const pr = al("HORIZONTAL", {pad: [6, 12, 6, 12], fill: "panel", align: "CENTER"}); fixed(pr, 890, 30); pr.strokes = [fill("border")]; pr.strokeWeight = 1; pr.appendChild(txt(o.prompt || "Грань 6 · «Плита» · 400.0, 200.0, 100.0 мм", {size: 11, color: "muted"})); mid.appendChild(pr); body.appendChild(mid);
+  const right = al("VERTICAL", {gap: 0, fill: "panel"}); fixed(right, 300, 830);
+  const r1 = section("Свойства", 300);
+  if (o.errorRow) { r1.appendChild(txt("Скругление 1 · Скругление", {size: 11, color: "muted"})); r1.appendChild(txt("Скругление 1: радиус 500 мм слишком велик для выбранных рёбер", {size: 11, color: "accent", w: 280})); r1.appendChild(field("Радиус", "500.000 мм", 150)); r1.appendChild(field("Рёбра", "все", 150)); }
+  else { r1.appendChild(txt("Выдавливание 1 · Выдавливание", {size: 11, color: "muted"})); r1.appendChild(field("Имя", "Выдавливание 1", 150)); r1.appendChild(field("Эскиз", "Эскиз 1", 150)); r1.appendChild(field("Расстояние", "100.000 мм", 150)); r1.appendChild(field("Вторая сторона", "0.000 мм", 150)); r1.appendChild(check("Симметрично", false)); r1.appendChild(field("Режим", "новое тело", 150)); }
+  r1.appendChild(btn("Все параметры…", false)); right.appendChild(r1);
+  const r2 = section("Материал", 300); r2.appendChild(field("Материал", "Сталь", 150)); r2.appendChild(field("Плотность", "7.850 г/см³", 150)); r2.appendChild(btn("Цвет…", false)); right.appendChild(r2);
+  const r3 = section("Масса и объём", 300); r3.appendChild(txt(o.pattern ? "Тел: 1\nОбъём: 31905.752 см³\nПлощадь: 8812.57 см²\nМасса: 250.460 кг (Сталь, 7.85 г/см³)\nЦентр масс: 400.00, 200.00, 50.00 мм\nтело: 9 граней, 15 рёбер" : "Тел: 1\nОбъём: 31968.584 см³\nПлощадь: 8806.28 см²\nМасса: 250.953 кг (Сталь, 7.85 г/см³)\nЦентр масс: 400.00, 200.00, 50.00 мм\nтело: 7 граней, 13 рёбер", {size: 12, w: 280})); right.appendChild(r3);
+  body.appendChild(right); f.appendChild(body); f.appendChild(statusBar("Модель", o.status || "")); return f;
+}
+
 // ---------------------------------------------------------------- Интерьер (этап 05)
 function planCanvas(w, h, o = {}) {
   const c = figma.createFrame(); c.name = "Plan canvas"; c.resize(w, h); c.fills = [fill("canvas")]; c.clipsContent = true;
@@ -382,6 +439,12 @@ row();
 place(sketchScreen("Эскиз — конфликт ограничений", {conflict: true, prompt: "Ограничение конфликтует с существующими (выделено красным)"}));
 place(sketchScreen("Эскиз — окружность выбрана, касание", {selected: "Окружность #6", activeTool: "↖", prompt: "Добавлено: Касание #5, #6"}));
 row();
+place(modelScreen("Модель — Light", {faceSelected: true}));
+MODE = "Dark"; place(modelScreen("Модель — Dark", {faceSelected: true})); MODE = "Light";
+row();
+place(modelScreen("Модель — ошибка операции", {errorRow: true, prompt: "Ошибка построения: Скругление 1: радиус 500 мм слишком велик для выбранных рёбер", status: "Скругление 1: ошибка"}));
+place(modelScreen("Модель — массив отверстий", {pattern: true, activeOp: "⋮⋮", prompt: "Массив линейный 1: тело: 9 граней, 15 рёбер"}));
+row();
 place(interiorScreen("Интерьер — Light"));
 MODE = "Dark"; place(interiorScreen("Интерьер — Dark")); MODE = "Light";
 row();
@@ -403,6 +466,9 @@ dlgRow.appendChild(dialog("Настройки", "Настройки", [["Тем�
 dlgRow.appendChild(dialog("Слой", "Слой", [["Имя", "Стены"], ["Цвет", "#141413"], ["Толщина", "0.50 мм"], ["Тип линии", "Сплошная"]], 380, f => { for (const [t, on] of [["Видимый", true], ["Заблокирован", false], ["Печатается", true]]) { const r = al("HORIZONTAL", {gap: 6, align: "CENTER"}); const b = figma.createRectangle(); b.resize(14, 14); b.cornerRadius = 4; b.fills = [fill(on ? "accent" : "input")]; b.strokes = [fill("border")]; r.appendChild(b); r.appendChild(txt(t, {size: 12})); f.appendChild(r); } }));
 dlgRow.appendChild(dialog("Эскиз — размер", "Длина", [["Значение, мм", "120"]], 360));
 dlgRow.appendChild(dialog("Интерьер — помещение", "Помещение", [["Название (24.00 м²)", "Гостиная"], ["Материал пола", "Паркет"]], 420));
+dlgRow.appendChild(dialog("Модель — Выдавливание", "Выдавливание", [["Эскиз", "Эскиз 1"], ["Расстояние", "100.000 мм"], ["Вторая сторона", "0.000 мм (0 — нет)"], ["Режим", "новое тело"], ["Тело", "последнее"]], 420, f => f.appendChild(check("Симметрично", false))));
+dlgRow.appendChild(dialog("Модель — Отверстие", "Отверстие", [["Точка", "X 400  Y 200  Z 100"], ["Нормаль", "X 0  Y 0  Z 1"], ["Диаметр", "20.000 мм"], ["Глубина", "20.000 мм"], ["Диаметр зенковки", "16.000 мм"], ["Угол зенковки", "90 °"]], 440, f => { f.appendChild(check("Сквозное", true)); f.appendChild(check("Зенковка", false)); }));
+dlgRow.appendChild(dialog("Модель — Эскиз", "Эскиз", [["Плоскость", "выбранная грань"], ["Смещение", "0.000 мм"]], 760, f => { const bar = al("HORIZONTAL", {gap: 4}); for (const g of ["↖", "╱", "⌇", "▭", "○", "◠", "⛶"]) bar.appendChild(toolBtn(g, g === "▭")); bar.appendChild(txt("Замкнутый контур — профиль; окружность внутри — отверстие.", {size: 11, color: "muted", w: 400})); f.appendChild(bar); f.appendChild(sketchCanvas(712, 360, {crosshair: false, free: false})); }));
 const imp = al("VERTICAL", {name: "Импорт DXF — отчёт", pad: 24, gap: 10, fill: "bg", stroke: "border", radius: 14, align: "MIN"}); imp.resize(460, 10); imp.counterAxisSizingMode = "FIXED";
 imp.appendChild(txt("Импорт DXF", {family: SERIF, size: 18}));
 imp.appendChild(txt("Импортировано 128 объектов на 6 слоёв.\nЕдиницы: миллиметры (из файла).\nLINE 84 · LWPOLYLINE 22 · CIRCLE 9 · ARC 7 · TEXT 6\nПропущено: INSERT (3), 3DFACE (1) — блоки и 3D не поддерживаются на этапе 01.", {size: 12, w: 412}));
