@@ -7,6 +7,8 @@ class QTreeWidget;
 class QTreeWidgetItem;
 class QComboBox;
 class QFormLayout;
+class QGridLayout;
+class QLineEdit;
 class QLabel;
 class QToolButton;
 
@@ -14,16 +16,43 @@ namespace psi {
 
 class Viewport;
 
-// Tool palette: grouped buttons, one per draft tool.
+// Tool palette: search box, collapsible groups («Избранное» = 8 most recent, Рисование, Текст и размеры, Правка,
+// Объединение, Штриховка), 36 px buttons with labels (2 columns) or icons only (compact mode). Icons are built lazily on first show.
 class ToolsPanel : public QWidget {
     Q_OBJECT
 public:
     explicit ToolsPanel(QWidget* parent = nullptr);
-    void setActive(const QString& id);
+    void setActive(const QString& id);                       // highlights the tool and records it in «Избранное»
+    void setShortcut(const QString& id, const QString& keys);// shown in tooltips and searchable
+    void setCompact(bool on);
+    bool compact() const { return compact_; }
+    void setFilter(const QString& text);
+    QStringList recent() const { return recent_; }
+    QStringList visibleTools() const;                        // ids of buttons currently shown (tests)
+    bool groupCollapsed(const QString& title) const;
+    void setGroupCollapsed(const QString& title, bool collapsed);
 Q_SIGNALS:
     void toolRequested(const QString& id);
+protected:
+    void showEvent(QShowEvent* ev) override;
 private:
+    struct Group { QString title; QStringList ids; QToolButton* header = nullptr; QWidget* body = nullptr; QGridLayout* grid = nullptr; bool collapsed = false; };
+    QToolButton* button(const QString& id);                 // one button per tool, shared between groups
+    void relayout(Group& g);
+    void rebuildFavourites();
+    void ensureIcons();
+    void saveState() const;
+    std::vector<Group> groups_;
     QMap<QString, QToolButton*> buttons_;
+    QMap<QString, QToolButton*> favButtons_;
+    QMap<QString, QString> shortcuts_;
+    QStringList recent_;
+    QLineEdit* search_ = nullptr;
+    QToolButton* compactBtn_ = nullptr;
+    QString filter_;
+    QString active_;
+    bool compact_ = false;
+    bool iconsReady_ = false;
 };
 
 // Layers: visibility, lock, name, colour, weight; current layer; add / remove / edit via LayerCommand.

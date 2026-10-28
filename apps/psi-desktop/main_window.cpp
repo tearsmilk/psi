@@ -268,6 +268,7 @@ void MainWindow::buildDocks() {
     props_ = new PropertiesPanel(project_, *view_);
     tree_ = new TreePanel(project_, *view_);
     connect(tools_, &ToolsPanel::toolRequested, this, &MainWindow::startTool);
+    for (const QString& id : toolIds()) if (QAction* a = actions_.value("tool." + id)) tools_->setShortcut(id, a->shortcut().toString(QKeySequence::NativeText));
     connect(tree_, &TreePanel::sheetActivated, this, [this](quint64 id) { showPage(PageSheets); sheets_->selectSheet(id); });
     QDockWidget* dTools = mk(QStringLiteral("Инструменты"), tools_, Qt::LeftDockWidgetArea, "dockTools");
     QDockWidget* dTree = mk(QStringLiteral("Дерево документа"), tree_, Qt::LeftDockWidgetArea, "dockTree");
