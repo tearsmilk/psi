@@ -250,10 +250,10 @@ static TopoDS_Wire loopWire(const ProfileLoop& loop, const Plane& plane, QString
         if (std::abs(s.bulge) < 1e-12) {
             mk.Add(BRepBuilderAPI_MakeEdge(a, b).Edge());
         } else {
-            // дуга по трём точкам: середина хорды + сагитта по нормали к хорде (слева при bulge > 0)
+            // дуга по трём точкам: середина хорды + сагитта по нормали к хорде (дуга против часовой при bulge > 0 лежит справа от хорды)
             double dx = s.x2 - s.x1, dy = s.y2 - s.y1, c = std::hypot(dx, dy);
             double sag = s.bulge * c / 2.0;
-            double mx = (s.x1 + s.x2) / 2 - dy / c * sag, my = (s.y1 + s.y2) / 2 + dx / c * sag;
+            double mx = (s.x1 + s.x2) / 2 + dy / c * sag, my = (s.y1 + s.y2) / 2 - dx / c * sag;
             gp_Pnt m = P(plane.map(mx, my));
             GC_MakeArcOfCircle arc(a, m, b);
             if (!arc.IsDone()) { if (err) *err = QStringLiteral("Дуга профиля не построена"); return TopoDS_Wire(); }

@@ -91,8 +91,8 @@ public:
     bool setSuppressed(quint64 id, bool on);
     bool rename(quint64 id, const QString& name);
 
-    // Перестроение: все операции или начиная с операции fromIndex (используется кэш состояния перед ней).
-    RebuildReport rebuild(int fromIndex = 0);
+    // Перестроение: с первой изменённой операции (fromIndex < 0) или с fromIndex (кэш состояния перед ней); 0 = всё.
+    RebuildReport rebuild(int fromIndex = -1);
     bool dirty() const { return dirtyFrom_ >= 0; }
 
     const std::vector<Body>& bodies() const { return bodies_; }

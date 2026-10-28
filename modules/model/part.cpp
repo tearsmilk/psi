@@ -489,7 +489,8 @@ bool Part::applyFeature(Feature& f, State& st) {
 RebuildReport Part::rebuild(int fromIndex) {
     RebuildReport rep;
     const int n = int(features_.size());
-    if (dirtyFrom_ >= 0) fromIndex = std::min(fromIndex, dirtyFrom_);
+    if (fromIndex < 0) fromIndex = dirtyFrom_ < 0 ? n : dirtyFrom_;
+    else if (dirtyFrom_ >= 0) fromIndex = std::min(fromIndex, dirtyFrom_);
     fromIndex = std::clamp(fromIndex, 0, n);
     if (int(states_.size()) < fromIndex) fromIndex = int(states_.size());
     states_.resize(size_t(n));
