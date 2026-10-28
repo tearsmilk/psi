@@ -40,7 +40,7 @@ function field(label, value, w = 180) { const r = al("HORIZONTAL", {gap: 10, ali
 function workspaceBar(active) {
   const ws = al("HORIZONTAL", {name: "Workspace bar", pad: [6, 12, 6, 12], gap: 4, fill: "panel", align: "CENTER"}); fixed(ws, 1440, 44); ws.strokes = [fill("border")]; ws.strokeWeight = 1;
   ws.appendChild(txt("Ψ", {family: SERIF, size: 20, color: "accent"})); const sp0 = al("HORIZONTAL"); sp0.resize(8, 4); ws.appendChild(sp0);
-  for (const [t, en] of [["Черчение", true], ["Листы", true], ["Эскиз", false], ["Модель", false], ["Сборка", false], ["Интерьер", false], ["Чертёж 3D", false]]) {
+  for (const [t, en] of [["Черчение", true], ["Листы", true], ["Эскиз", true], ["Модель", false], ["Сборка", false], ["Интерьер", true], ["Чертёж 3D", false]]) {
     const on = t === active; const b = al("HORIZONTAL", {pad: [5, 11, 5, 11], radius: 7, fill: on ? "selected" : undefined}); b.appendChild(txt(t, {style: on ? "Medium" : "Regular", color: en ? "text" : "faint"})); ws.appendChild(b);
   }
   const sp = al("HORIZONTAL"); sp.layoutGrow = 1; ws.appendChild(sp);
@@ -181,6 +181,134 @@ function dialog(name, title, rows, w = 460, extra) {
   const r = al("HORIZONTAL", {gap: 8}); r.resize(w - 48, 32); r.primaryAxisSizingMode = "FIXED"; const sp = al("HORIZONTAL"); sp.layoutGrow = 1; r.appendChild(sp); r.appendChild(btn("Отмена", false)); r.appendChild(btn("Готово", true)); f.appendChild(r); return f;
 }
 
+// ---------------------------------------------------------------- Эскиз (этап 02)
+function section(title, w) { const d = al("VERTICAL", {pad: [8, 10, 8, 10], gap: 6, fill: "panel", align: "MIN"}); d.resize(w, 10); d.primaryAxisSizingMode = "AUTO"; d.counterAxisSizingMode = "FIXED"; d.strokes = [fill("border")]; d.strokeWeight = 1; d.appendChild(txt(title, {family: SERIF, size: 15})); return d; }
+function glyphGrid(glyphs, w, active) { const g = al("HORIZONTAL", {gap: 4}); g.layoutWrap = "WRAP"; g.counterAxisSpacing = 4; g.resize(w, 10); g.primaryAxisSizingMode = "FIXED"; for (const gl of glyphs) g.appendChild(toolBtn(gl, gl === active)); return g; }
+function check(t, on) { const r = al("HORIZONTAL", {gap: 6, align: "CENTER"}); const b = figma.createRectangle(); b.resize(14, 14); b.cornerRadius = 4; b.fills = [fill(on ? "accent" : "input")]; b.strokes = [fill("border")]; r.appendChild(b); r.appendChild(txt(t, {size: 12})); return r; }
+function tableRows(rows, widths, w, redRow) {
+  const t = al("VERTICAL", {gap: 0, fill: "card", stroke: "border", radius: 8}); t.resize(w, 10); t.primaryAxisSizingMode = "AUTO"; t.counterAxisSizingMode = "FIXED";
+  rows.forEach((cells, i) => { const r = al("HORIZONTAL", {gap: 8, pad: [5, 10, 5, 10], fill: i === 0 ? "panel" : undefined}); r.resize(w, 26); r.primaryAxisSizingMode = "FIXED"; cells.forEach((c, j) => { const tx = txt(c, {size: 11, color: i === 0 ? "muted" : (i === redRow ? "accent" : "text")}); tx.resize(widths[j], tx.height); r.appendChild(tx); }); t.appendChild(r); });
+  return t;
+}
+function dimLabel(parent, x, y, text, active) { const lab = al("HORIZONTAL", {pad: [2, 7, 2, 7], radius: 4, fill: "canvas", stroke: active ? "accent" : "muted"}); lab.x = x; lab.y = y; lab.appendChild(txt(text, {size: 10})); parent.appendChild(lab); }
+function glyphBadge(parent, x, y, g, color) { const b = al("HORIZONTAL", {pad: 0, radius: 3, fill: "canvas", stroke: color || "muted"}); fixed(b, 14, 14); b.primaryAxisAlignItems = "CENTER"; b.counterAxisAlignItems = "CENTER"; b.x = x; b.y = y; b.appendChild(txt(g, {size: 9, color: color || "muted"})); parent.appendChild(b); }
+function sketchCanvas(w, h, o = {}) {
+  const c = figma.createFrame(); c.name = "Sketch canvas"; c.resize(w, h); c.fills = [fill("canvas")]; c.clipsContent = true;
+  for (let x = 0; x <= w; x += 24) c.appendChild(line(x, 0, x, h, x % 120 === 0 ? "grid-major" : "grid", 1));
+  for (let y = 0; y <= h; y += 24) c.appendChild(line(0, y, w, y, y % 120 === 0 ? "grid-major" : "grid", 1));
+  // прямоугольник 120×60 при 4 px/мм: 480×240, полностью определён — чёрный; окружность R20 с касанием — свободна (терракота)
+  const ox = (w - 480) / 2 - 60, oy = (h - 240) / 2 + 20;
+  const rect = [[0, 0, 480, 0], [480, 0, 480, 240], [480, 240, 0, 240], [0, 240, 0, 0]];
+  for (const [x1, y1, x2, y2] of rect) c.appendChild(line(ox + x1, oy + 240 - y1, ox + x2, oy + 240 - y2, "ink", 1.6));
+  for (const [x, y] of [[0, 0], [480, 0], [480, 240], [0, 240]]) { const d = figma.createEllipse(); d.resize(6, 6); d.x = ox + x - 3; d.y = oy + 240 - y - 3; d.fills = [fill("ink")]; c.appendChild(d); }
+  const circ = figma.createEllipse(); circ.resize(160, 160); circ.x = ox + 560 - 80; circ.y = oy + 240 - 80 - 80; circ.fills = []; circ.strokes = [fill(o.free === false ? "ink" : "accent")]; circ.strokeWeight = 1.6; c.appendChild(circ);
+  const cc = figma.createEllipse(); cc.resize(5, 5); cc.x = ox + 560 - 2.5; cc.y = oy + 240 - 80 - 2.5; cc.fills = [fill("canvas")]; cc.strokes = [fill("accent")]; cc.strokeWeight = 1; c.appendChild(cc);
+  // касательный отрезок (свободен) от правой стороны прямоугольника к окружности
+  c.appendChild(line(ox + 480, oy + 240 - 240, ox + 560, oy + 240 - 160, "accent", 1.6));
+  // значки ограничений
+  glyphBadge(c, ox + 230, oy + 240 + 6, "—"); glyphBadge(c, ox + 230, oy - 20, "—"); glyphBadge(c, ox - 20, oy + 110, "|"); glyphBadge(c, ox + 486, oy + 110, "|");
+  for (const [x, y] of [[0, 0], [480, 0], [480, 240], [0, 240]]) glyphBadge(c, ox + x + 8, oy + 240 - y - 22, "●");
+  glyphBadge(c, ox - 22, oy + 240 + 6, "⌖", "ink"); glyphBadge(c, ox + 522, oy + 40, "◠", "accent");
+  // размерные подписи с выносками
+  const d1 = line(ox, oy + 240 + 40, ox + 480, oy + 240 + 40, "muted", 0.8); d1.dashPattern = [2, 3]; c.appendChild(d1); dimLabel(c, ox + 215, oy + 240 + 30, "120", o.editing);
+  const d2 = line(ox - 40, oy, ox - 40, oy + 240, "muted", 0.8); d2.dashPattern = [2, 3]; c.appendChild(d2); dimLabel(c, ox - 60, oy + 110, "60");
+  dimLabel(c, ox + 560 + 60, oy + 240 - 80 - 70, "R20");
+  if (o.conflict) { const bad = line(ox, oy + 240 + 70, ox + 480, oy + 240 + 70, "accent", 0.8); c.appendChild(bad); dimLabel(c, ox + 215, oy + 240 + 60, "150", true); }
+  const st = txt(o.conflict ? "Свободных степеней: 3  ·  конфликт ограничений" : "Свободных степеней: 3", {size: 10, color: o.conflict ? "accent" : "muted"}); st.x = 10; st.y = h - 24; c.appendChild(st);
+  if (o.crosshair !== false) { c.appendChild(line(0, oy + 60, w, oy + 60, "crosshair", 1)); c.appendChild(line(ox + 560, 0, ox + 560, h, "crosshair", 1)); }
+  return c;
+}
+function sketchScreen(name, o = {}) {
+  const f = al("VERTICAL", {name, gap: 0, fill: "bg"}); fixed(f, 1440, 900); f.appendChild(workspaceBar("Эскиз"));
+  const body = al("HORIZONTAL", {gap: 0}); fixed(body, 1440, 830);
+  const left = al("VERTICAL", {gap: 0, fill: "panel"}); fixed(left, 230, 830);
+  const s1 = section("Эскизы", 230); for (const [n, on] of [["Эскиз 1  (6 об., 11 огр.)", true], ["Кронштейн  (14 об., 22 огр.)", false]]) { const r = al("HORIZONTAL", {pad: [5, 8, 5, 8], radius: 6, fill: on ? "selected" : undefined}); r.resize(210, 26); r.primaryAxisSizingMode = "FIXED"; r.appendChild(txt(n, {size: 12})); s1.appendChild(r); }
+  const sb = al("HORIZONTAL", {gap: 4}); for (const g of ["+", "−"]) sb.appendChild(toolBtn(g)); const rn = al("HORIZONTAL", {pad: [5, 8, 5, 8], radius: 6, stroke: "border"}); rn.appendChild(txt("Имя…", {size: 12})); sb.appendChild(rn); s1.appendChild(sb); left.appendChild(s1);
+  const s2 = section("Инструменты", 230); s2.appendChild(glyphGrid(["↖", "·", "╱", "⌇", "▭", "○", "◠"], 210, o.activeTool || "↖")); left.appendChild(s2);
+  const s3 = section("Ограничения", 230); s3.appendChild(glyphGrid(["●", "—", "|", "∥", "⟂", "◠", "=", "⌖", "↔", "L", "R", "⌀", "∠", "⊙", "⊚", "⇋"], 210)); left.appendChild(s3);
+  const s4 = section("Параметры", 230); s4.appendChild(check("Автопривязки", true)); s4.appendChild(check("Магнит к сетке", true)); s4.appendChild(btn("Показать всё", false)); s4.appendChild(btn("Выдать в чертёж", true));
+  s4.appendChild(txt("Выделите объекты и нажмите ограничение. Двойной клик по размеру — изменить значение. Чёрное — закреплено, терракотовое — свободно.", {size: 11, color: "muted", w: 210})); left.appendChild(s4);
+  body.appendChild(left);
+  const mid = al("VERTICAL", {gap: 0}); fixed(mid, 910, 830); mid.appendChild(sketchCanvas(910, 800, o));
+  const pr = al("HORIZONTAL", {pad: [6, 12, 6, 12], fill: "panel", align: "CENTER"}); fixed(pr, 910, 30); pr.strokes = [fill("border")]; pr.strokeWeight = 1; pr.appendChild(txt(o.prompt || "Выберите объект или точку; Shift — добавить к выбору", {size: 11, color: "muted"})); mid.appendChild(pr); body.appendChild(mid);
+  const right = al("VERTICAL", {gap: 0, fill: "panel"}); fixed(right, 300, 830);
+  const r1 = section("Ограничения", 300); r1.appendChild(txt(o.conflict ? "Свободных степеней: 3" : "Свободных степеней: 3", {size: 11, color: "muted"}));
+  if (o.conflict) r1.appendChild(txt("Конфликт: 2 ограничений не выполняются (выделены красным)", {size: 11, color: "accent", w: 280}));
+  const rows = [["Тип", "Объекты", "Значение"], ["● Совпадение", "#1.2, #2.1", "—"], ["● Совпадение", "#2.2, #3.1", "—"], ["— Горизонталь", "#1", "—"], ["| Вертикаль", "#2", "—"], ["L Длина", "#1", "120 мм"], ["L Длина", "#2", "60 мм"], ["⌖ Закрепление", "#1.1", "—"], ["◠ Касание", "#5, #6", "—"], ["R Радиус", "#6", "20 мм"]];
+  if (o.conflict) rows.push(["L Длина", "#1", "150 мм"]);
+  r1.appendChild(tableRows(rows, [100, 90, 70], 280, o.conflict ? rows.length - 1 : -1)); const rb = al("HORIZONTAL", {gap: 4}); rb.appendChild(toolBtn("✕")); r1.appendChild(rb); right.appendChild(r1);
+  const r2 = section("Свойства", 300); r2.appendChild(txt(o.selected || "Отрезок #1", {size: 11, color: "muted"}));
+  for (const [l, v] of o.selected ? [["Центр X", "140.00 мм"], ["Центр Y", "20.00 мм"], ["Радиус", "20.00 мм"]] : [["X1", "0.00 мм"], ["Y1", "0.00 мм"], ["X2", "120.00 мм"], ["Y2", "0.00 мм"], ["Длина", "120.00 мм"]]) r2.appendChild(field(l, v, 150));
+  r2.appendChild(check("Вспомогательная", false)); r2.appendChild(check("Закреплён целиком", false)); r2.appendChild(field("Ограничений", "4", 150)); right.appendChild(r2);
+  body.appendChild(right); f.appendChild(body); f.appendChild(statusBar("Эскиз", o.conflict ? "" : "Свободных степеней: 3")); return f;
+}
+
+// ---------------------------------------------------------------- Интерьер (этап 05)
+function planCanvas(w, h, o = {}) {
+  const c = figma.createFrame(); c.name = "Plan canvas"; c.resize(w, h); c.fills = [fill("canvas")]; c.clipsContent = true;
+  for (let x = 0; x <= w; x += 24) c.appendChild(line(x, 0, x, h, x % 120 === 0 ? "grid-major" : "grid", 1));
+  for (let y = 0; y <= h; y += 24) c.appendChild(line(0, y, w, y, y % 120 === 0 ? "grid-major" : "grid", 1));
+  // оси 6200×4200 при 0.1 px/мм, стены 200 → 20 px
+  const ox = (w - 620) / 2, oy = (h - 420) / 2, T = 10;   // 0.1 px/мм
+  const room = figma.createRectangle(); room.resize(600, 400); room.x = ox + T; room.y = oy + T; room.fills = [fill("accent", 0.05)]; c.appendChild(room);
+  const ring = figma.createVector(); ring.vectorPaths = [{windingRule: "EVENODD", data: `M ${ox - T} ${oy - T} L ${ox + 620 + T} ${oy - T} L ${ox + 620 + T} ${oy + 420 + T} L ${ox - T} ${oy + 420 + T} Z M ${ox + T} ${oy + T} L ${ox + 620 - T} ${oy + T} L ${ox + 620 - T} ${oy + 420 - T} L ${ox + T} ${oy + 420 - T} Z`}];
+  ring.fills = [fill("card")]; ring.strokes = [fill("ink")]; ring.strokeWeight = 1.4; c.appendChild(ring);
+  for (let i = -T; i < 620 + T; i += 10) c.appendChild(line(ox + i, oy + 420 + T, ox + i + 2 * T, oy + 420 - T, "muted", 0.6));
+  for (let i = -T; i < 620 + T; i += 10) c.appendChild(line(ox + i, oy + T, ox + i + 2 * T, oy - T, "muted", 0.6));
+  for (let j = -T; j < 420 + T; j += 10) c.appendChild(line(ox - T, oy + j, ox + T, oy + j + 2 * T, "muted", 0.6));
+  for (let j = -T; j < 420 + T; j += 10) c.appendChild(line(ox + 620 - T, oy + j, ox + 620 + T, oy + j + 2 * T, "muted", 0.6));
+  // дверь 900 на нижней стене (offset 1500): вырез, полотно, дуга
+  const dx = ox + 150 - 45; const cut = figma.createRectangle(); cut.resize(90, 2 * T + 1); cut.x = dx; cut.y = oy + 420 - T; cut.fills = [fill("canvas")]; c.appendChild(cut);
+  c.appendChild(line(dx, oy + 420 - T, dx, oy + 420 + T, "ink", 1.2)); c.appendChild(line(dx + 90, oy + 420 - T, dx + 90, oy + 420 + T, "ink", 1.2));
+  c.appendChild(line(dx, oy + 420, dx, oy + 420 - 90, "ink", 1.4));
+  const arc = figma.createEllipse(); arc.resize(180, 180); arc.x = dx - 90; arc.y = oy + 420 - 90; arc.fills = []; arc.strokes = [fill("ink")]; arc.strokeWeight = 0.8; arc.dashPattern = [3, 3]; arc.arcData = {startingAngle: -Math.PI / 2, endingAngle: 0, innerRadius: 0}; c.appendChild(arc);
+  // окно 1400 на правой стене (offset 6200+2000)
+  const wy = oy + 200 - 70; const wcut = figma.createRectangle(); wcut.resize(2 * T + 1, 140); wcut.x = ox + 620 - T; wcut.y = wy; wcut.fills = [fill("canvas")]; c.appendChild(wcut);
+  for (const xx of [ox + 620 - T, ox + 620, ox + 620 + T]) c.appendChild(line(xx, wy, xx, wy + 140, "ink", xx === ox + 620 ? 0.8 : 1.2));
+  c.appendChild(line(ox + 620 - T, wy, ox + 620 + T, wy, "ink", 1.2)); c.appendChild(line(ox + 620 - T, wy + 140, ox + 620 + T, wy + 140, "ink", 1.2));
+  // помещение
+  const rn = txt(o.roomName || "Гостиная", {family: SERIF, size: 15}); rn.x = ox + 310 - 40; rn.y = oy + 210 - 22; c.appendChild(rn);
+  const ra = txt("24.00 м² · Паркет", {size: 11, color: "muted"}); ra.x = ox + 310 - 46; ra.y = oy + 210; c.appendChild(ra);
+  // шкаф 1200×600 у верхней стены, кровать 1600×2000 (повёрнута) справа
+  const wardrobe = figma.createRectangle(); wardrobe.resize(120, 60); wardrobe.x = ox + 70 - 60 + 10; wardrobe.y = oy + T + 2; wardrobe.fills = [fill("card")]; wardrobe.strokes = [fill("ink")]; wardrobe.strokeWeight = 1.2; c.appendChild(wardrobe);
+  c.appendChild(line(wardrobe.x, wardrobe.y, wardrobe.x + 120, wardrobe.y + 60, "ink", 0.8)); c.appendChild(line(wardrobe.x, wardrobe.y + 60, wardrobe.x + 120, wardrobe.y, "ink", 0.8));
+  const wl = txt("Шкаф", {size: 9, color: "muted"}); wl.x = wardrobe.x + 46; wl.y = wardrobe.y + 62; c.appendChild(wl);
+  const bedX = o.collision ? ox + 620 - T - 150 : ox + 400, bedY = oy + 120;
+  const bed = figma.createRectangle(); bed.resize(o.collision ? 200 : 160, o.collision ? 160 : 200); bed.x = bedX; bed.y = bedY; bed.fills = [fill("card")]; bed.strokes = [fill(o.collision ? "accent" : o.bedSelected ? "selected" : "ink")]; bed.strokeWeight = o.collision || o.bedSelected ? 2 : 1.2; c.appendChild(bed);
+  const pillow = figma.createRectangle(); pillow.resize(o.collision ? 30 : 144, o.collision ? 144 : 30); pillow.x = o.collision ? bedX + 8 : bedX + 8; pillow.y = o.collision ? bedY + 8 : bedY + 8; pillow.fills = []; pillow.strokes = [fill(o.collision ? "accent" : "ink")]; pillow.strokeWeight = 0.8; c.appendChild(pillow);
+  const bl = txt("Кровать", {size: 9, color: "muted"}); bl.x = bedX + (o.collision ? 70 : 50); bl.y = bedY + (o.collision ? 164 : 204); c.appendChild(bl);
+  if (o.ghost) { const g = figma.createRectangle(); g.resize(140, 70); g.x = ox + 420; g.y = oy + 420 - T - 72; g.fills = []; g.strokes = [fill("accent")]; g.strokeWeight = 1.2; g.dashPattern = [5, 4]; c.appendChild(g); const gl = txt("Стол 1400×700 · R — повернуть", {size: 10, color: "accent"}); gl.x = ox + 420; gl.y = oy + 420 - T - 90; c.appendChild(gl); }
+  const st = txt(o.collision ? "Этаж 1 · стен 1 · проёмов 2 · мебели 2 · помещений 1  ·  коллизий: 1" : "Этаж 1 · стен 1 · проёмов 2 · мебели 2 · помещений 1", {size: 10, color: o.collision ? "accent" : "muted"}); st.x = 10; st.y = h - 24; c.appendChild(st);
+  return c;
+}
+function interiorScreen(name, o = {}) {
+  const f = al("VERTICAL", {name, gap: 0, fill: "bg"}); fixed(f, 1440, 900); f.appendChild(workspaceBar("Интерьер"));
+  const body = al("HORIZONTAL", {gap: 0}); fixed(body, 1440, 830);
+  const left = al("VERTICAL", {gap: 0, fill: "panel"}); fixed(left, 240, 830);
+  const s1 = section("Этажи и объекты", 240); const fr = al("HORIZONTAL", {gap: 4, align: "CENTER"}); const fc = al("HORIZONTAL", {pad: [5, 9, 5, 9], radius: 7, fill: "input", stroke: "border"}); fc.resize(150, 28); fc.primaryAxisSizingMode = "FIXED"; fc.appendChild(txt("Этаж 1  (отм. 0 мм) ▾", {size: 12})); fr.appendChild(fc); fr.appendChild(toolBtn("+")); fr.appendChild(toolBtn("−")); s1.appendChild(fr);
+  const treeRows = [["Стены  (1)", 0], ["Стена #1 · 20800 мм · Кирпич", 1], ["Проёмы  (2)", 0], ["Дверь #2 · 900 мм", 1], ["Окно #3 · 900 мм", 1], ["Мебель  (2)", 0], ["Шкаф #4", 1], ["Кровать #5", 1], ["Помещения  (1)", 0], ["Гостиная · 24.00 м²", 1]];
+  if (o.collision) treeRows.push(["Коллизии  (1)", 0], ["Кровать заходит в стену", 1]);
+  for (const [t, lvl] of treeRows) { const r = al("HORIZONTAL", {pad: [3, 6, 3, 6 + lvl * 16], radius: 5, fill: (o.collision && t.startsWith("Кровать заходит")) || (o.bedSelected && t === "Кровать #5") ? "selected" : undefined}); r.resize(220, 22); r.primaryAxisSizingMode = "FIXED"; r.appendChild(txt(t, {size: 11, color: lvl ? (t.includes("Коллизи") || t.includes("заходит") ? "accent" : "text") : (t.startsWith("Коллизии") ? "accent" : "text"), style: lvl ? "Regular" : "Medium"})); s1.appendChild(r); }
+  left.appendChild(s1);
+  const s2 = section("Инструменты", 240); s2.appendChild(glyphGrid(["↖", "⌇", "⌂", "▭", "T", "▨", "↔", "✕"], 220, o.activeTool || "↖"));
+  for (const [l, v] of [["Толщина стены", "200 мм"], ["Высота стены", "2700 мм"], ["Ширина проёма", "900 мм"]]) s2.appendChild(field(l, v, 100));
+  s2.appendChild(btn("Показать всё", false)); s2.appendChild(btn("Выдать план в чертёж", true)); left.appendChild(s2);
+  body.appendChild(left);
+  const mid = al("VERTICAL", {gap: 0}); fixed(mid, 880, 830); mid.appendChild(planCanvas(880, 800, o));
+  const pr = al("HORIZONTAL", {pad: [6, 12, 6, 12], fill: "panel", align: "CENTER"}); fixed(pr, 880, 30); pr.strokes = [fill("border")]; pr.strokeWeight = 1; pr.appendChild(txt(o.prompt || "Выберите стену, проём, мебель или помещение; перетаскивайте мышью, R — повернуть", {size: 11, color: "muted"})); mid.appendChild(pr); body.appendChild(mid);
+  const right = al("VERTICAL", {gap: 0, fill: "panel"}); fixed(right, 320, 830);
+  const r1 = section("Свойства", 320);
+  if (o.bedSelected || o.collision) { r1.appendChild(txt("Кровать #5 · Кровать", {size: 11, color: "muted"})); for (const [l, v] of [["Название", "Кровать"], ["Ширина", "1600 мм"], ["Высота", "500 мм"], ["Глубина", "2000 мм"], ["Поворот", "90 °"], ["Материал", "Массив"], ["Цвет", "Дуб"], ["Артикул", "BD-160"], ["Цена", "32 000 ₽"], ["Полки", "0"], ["Ящики", "2"]]) r1.appendChild(field(l, v, 160)); }
+  else { r1.appendChild(txt("Дом · Этаж 1", {size: 11, color: "muted"})); for (const [l, v] of [["Здание", "Дом"], ["Этаж", "Этаж 1"], ["Высота этажа", "2700 мм"]]) r1.appendChild(field(l, v, 160)); }
+  right.appendChild(r1);
+  const r2 = section("Каталог мебели", 320); for (const [n, on] of [["Шкаф — 1200×2000×600, 18000 ₽", false], ["Стол — 1400×750×700, 9500 ₽", !!o.ghost], ["Полка — 800×300×250, 2400 ₽", false], ["Кровать — 1600×500×2000, 32000 ₽", false], ["Тумба — 450×500×400, 4200 ₽", false]]) { const r = al("HORIZONTAL", {pad: [4, 8, 4, 8], radius: 6, fill: on ? "selected" : undefined}); r.resize(300, 24); r.primaryAxisSizingMode = "FIXED"; r.appendChild(txt(n, {size: 11})); r2.appendChild(r); }
+  r2.appendChild(txt("Щёлкните по позиции, затем по плану. Размеры и цену меняйте в «Свойствах».", {size: 11, color: "muted", w: 300})); right.appendChild(r2);
+  const r3 = section("Ведомости", 320); const tabs = al("HORIZONTAL", {gap: 4}); for (const [t, on] of [["Мебель", true], ["Материалы", false]]) { const b = al("HORIZONTAL", {pad: [4, 10, 4, 10], radius: 6, fill: on ? "selected" : undefined}); b.appendChild(txt(t, {size: 12, color: on ? "accent" : "text"})); tabs.appendChild(b); } r3.appendChild(tabs);
+  r3.appendChild(tableRows([["Наименование", "Размер", "Кол-во", "Сумма"], ["Шкаф", "1200 × 2000 × 600", "1", "18000 ₽"], ["Кровать", "1600 × 500 × 2000", "1", "32000 ₽"]], [90, 110, 40, 50], 300));
+  r3.appendChild(txt("Позиций: 2 · итого 50 000 ₽", {size: 11, color: "muted"})); r3.appendChild(btn("Экспорт CSV", false)); right.appendChild(r3);
+  body.appendChild(right); f.appendChild(body); f.appendChild(statusBar("Интерьер", "")); return f;
+}
+
 const sheetsList = [];
 let x = 0, y = 0;
 function place(node, w) { node.x = x; node.y = y; x += (w || node.width) + 120; sheetsList.push(node); }
@@ -199,6 +327,18 @@ row();
 place(sheetsScreen("Листы — Light"));
 MODE = "Dark"; place(sheetsScreen("Листы — Dark")); MODE = "Light";
 row();
+place(sketchScreen("Эскиз — Light"));
+MODE = "Dark"; place(sketchScreen("Эскиз — Dark")); MODE = "Light";
+row();
+place(sketchScreen("Эскиз — конфликт ограничений", {conflict: true, prompt: "Ограничение конфликтует с существующими (выделено красным)"}));
+place(sketchScreen("Эскиз — окружность выбрана, касание", {selected: "Окружность #6", activeTool: "↖", prompt: "Добавлено: Касание #5, #6"}));
+row();
+place(interiorScreen("Интерьер — Light"));
+MODE = "Dark"; place(interiorScreen("Интерьер — Dark")); MODE = "Light";
+row();
+place(interiorScreen("Интерьер — коллизия", {collision: true, bedSelected: true, prompt: "Кровать заходит в стену — перенесите или поверните (R)"}));
+place(interiorScreen("Интерьер — размещение мебели", {ghost: true, activeTool: "▨", prompt: "Мебель «Стол»: щёлкните для размещения, R — повернуть"}));
+row();
 const dlgRow = al("HORIZONTAL", {name: "Диалоги", gap: 60, align: "MIN"}); dlgRow.x = 0; dlgRow.y = y; sheetsList.push(dlgRow);
 dlgRow.appendChild(dialog("Параметры документа", "Параметры документа", [["Единицы отображения", "Миллиметры"], ["Знаков после запятой", "2"], ["Шаг сетки", "10 мм"], ["Шаг полярного угла", "45 °"], ["Высота текста", "3.5 мм"], ["Автор", ""]], 460, f => {
   const g = al("HORIZONTAL", {gap: 8}); g.layoutWrap = "WRAP"; g.counterAxisSpacing = 6; g.resize(400, 10); g.primaryAxisSizingMode = "FIXED";
@@ -212,6 +352,8 @@ dlgRow.appendChild(dialog("Настройки", "Настройки", [["Тем�
   f.appendChild(t); f.appendChild(txt("Тема и акцент применяются после перезапуска. Пустое поле — без сочетания.", {size: 11, color: "faint"}));
 }));
 dlgRow.appendChild(dialog("Слой", "Слой", [["Имя", "Стены"], ["Цвет", "#141413"], ["Толщина", "0.50 мм"], ["Тип линии", "Сплошная"]], 380, f => { for (const [t, on] of [["Видимый", true], ["Заблокирован", false], ["Печатается", true]]) { const r = al("HORIZONTAL", {gap: 6, align: "CENTER"}); const b = figma.createRectangle(); b.resize(14, 14); b.cornerRadius = 4; b.fills = [fill(on ? "accent" : "input")]; b.strokes = [fill("border")]; r.appendChild(b); r.appendChild(txt(t, {size: 12})); f.appendChild(r); } }));
+dlgRow.appendChild(dialog("Эскиз — размер", "Длина", [["Значение, мм", "120"]], 360));
+dlgRow.appendChild(dialog("Интерьер — помещение", "Помещение", [["Название (24.00 м²)", "Гостиная"], ["Материал пола", "Паркет"]], 420));
 const imp = al("VERTICAL", {name: "Импорт DXF — отчёт", pad: 24, gap: 10, fill: "bg", stroke: "border", radius: 14, align: "MIN"}); imp.resize(460, 10); imp.counterAxisSizingMode = "FIXED";
 imp.appendChild(txt("Импорт DXF", {family: SERIF, size: 18}));
 imp.appendChild(txt("Импортировано 128 объектов на 6 слоёв.\nЕдиницы: миллиметры (из файла).\nLINE 84 · LWPOLYLINE 22 · CIRCLE 9 · ARC 7 · TEXT 6\nПропущено: INSERT (3), 3DFACE (1) — блоки и 3D не поддерживаются на этапе 01.", {size: 12, w: 412}));

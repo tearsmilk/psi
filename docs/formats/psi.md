@@ -8,8 +8,15 @@ project/metadata.json    { "name", "author", "description", "created", "modified
 project/settings.json    DocumentSettings: unit, precision, grid, snap flags, ortho, polar, textHeight, tolerance, author
 drawings/main.json       { "layers": [...], "current": <id>, "entities": [...], "nextId": N }
 sheets/sheets.json       { "sheets": [ Sheet… ] }
+sketches/<id>.json       эскиз (modules/sketcher): { "id", "name", "plane", "next", "entities": [{id, k, p, c, f}], "constraints": [{id, t, refs: [[e, pt]], v, fx, fy, lx, ly}] }
+interior/<id>.json       здание (modules/interior): { "id", "name", "next", "floors": [{ id, name, level, height, walls, openings, furniture, rooms }] }
 <прочее>                 части неизвестных модулей сохраняются как есть («foreign parts»)
 ```
+
+Части `sketches/*` и `interior/*` читаются и пишутся рабочими пространствами «Эскиз» и «Интерьер» через
+`Project::foreignParts()`: ядро `.psi` их не разбирает, поэтому добавление нового типа части **не** меняет `schema` —
+старые версии Пси открывают такой файл и сохраняют части без изменений. Схема повышается только при изменении
+`drawings/main.json`, `sheets/sheets.json`, настроек или метаданных.
 
 ## Объект (`entities[]`)
 
