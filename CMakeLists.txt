@@ -31,6 +31,7 @@ add_compile_definitions(PSI_VERSION="${PROJECT_VERSION}" QT_NO_KEYWORDS)
 # ---- psi_core: document model, geometry, units, commands, sheets, .psi and DXF (Qt Core only)
 file(GLOB_RECURSE PSI_CORE_SRC CONFIGURE_DEPENDS
      core/*.cpp core/*.h modules/drawing/*.cpp modules/drawing/*.h
+     modules/sketcher/sketch.cpp modules/sketcher/sketch.h modules/interior/building.cpp modules/interior/building.h
      io/native/*.cpp io/native/*.h io/dxf/*.cpp io/dxf/*.h)
 add_library(psi_core STATIC ${PSI_CORE_SRC})
 target_include_directories(psi_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -39,6 +40,7 @@ target_link_libraries(psi_core PUBLIC Qt6::Core ZLIB::ZLIB)
 # ---- psi_ui: rendering, draft tools, PDF, theme and widgets
 file(GLOB_RECURSE PSI_UI_SRC CONFIGURE_DEPENDS
      rendering/*.cpp rendering/*.h modules/draft/*.cpp modules/draft/*.h
+     modules/sketcher/sketch_view.cpp modules/sketcher/sketch_view.h modules/interior/interior_view.cpp modules/interior/interior_view.h
      io/pdf/*.cpp io/pdf/*.h ui/*.cpp ui/*.h)
 add_library(psi_ui STATIC ${PSI_UI_SRC})
 target_link_libraries(psi_ui PUBLIC psi_core Qt6::Gui Qt6::Widgets Qt6::PrintSupport Qt6::Svg)
