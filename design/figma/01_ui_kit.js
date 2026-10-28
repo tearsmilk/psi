@@ -106,15 +106,45 @@ const wsSp = al("HORIZONTAL"); wsSp.layoutGrow = 1; ws.appendChild(wsSp);
 for (const g of ["↶", "↷", "⛶", "▦", "◎", "⟂", "✧", "PDF"]) { const b = al("HORIZONTAL", {pad: [5, 8, 5, 8], radius: 6}); b.appendChild(txt(g, {size: 12, color: g === "◎" || g === "✧" ? "accent" : "text"})); ws.appendChild(b); }
 grid.appendChild(ws);
 
-// --- Tool palette (dock «Инструменты»)
-const tools = comp("Dock / Инструменты", "VERTICAL", {pad: 10, gap: 6, fill: "panel", stroke: "border", align: "MIN"}); fixed(tools, 170, 330);
-for (const [title, glyphs] of [["Создать", ["↖", "╱", "⌇", "▭", "○", "◠", "⬭", "∿"]], ["Аннотации", ["T", "↗", "↔", "⟷", "↕", "R", "Ø", "∠", "▨"]], ["Изменить", ["✥", "⧉", "↻", "⇋", "⤢", "≡", "✂", "⟶", "◜", "◿", "⋮⋮", "✸", "✕"]]]) {
-  tools.appendChild(txt(title, {family: SERIF, size: 14}));
-  const g = al("HORIZONTAL", {gap: 4}); g.layoutWrap = "WRAP"; g.counterAxisSpacing = 4; g.resize(150, 10); g.primaryAxisSizingMode = "FIXED";
-  for (const [i, gl] of glyphs.entries()) g.appendChild(toolBtn(gl, title === "Создать" && i === 1));
-  tools.appendChild(g);
+// --- Tool palette (dock «Инструменты»): search, collapsible groups, «Избранное», 36 px buttons, compact mode
+const TOOL_GROUPS = [["Избранное", [["○", "Окружность"], ["╱", "Линия"], ["⊔", "Объединить"]]],
+  ["Рисование", [["↖", "Выбор"], ["╱", "Линия"], ["⌇", "Полилиния"], ["▭", "Прямоугольник"], ["○", "Окружность"], ["◠", "Дуга"], ["⬭", "Эллипс"], ["∿", "Сплайн"]]],
+  ["Текст и размеры", [["T", "Текст"], ["↗", "Выноска"], ["↔", "Линейный размер"], ["⟷", "Горизонтальный"], ["↕", "Вертикальный"], ["R", "Радиус"], ["Ø", "Диаметр"], ["∠", "Угловой"]]],
+  ["Правка", [["✥", "Переместить"], ["⧉", "Копировать"], ["↻", "Повернуть"], ["⇋", "Зеркало"], ["⤢", "Масштаб"], ["≡", "Смещение"], ["✂", "Обрезать"], ["⟶", "Удлинить"], ["◜", "Скругление"], ["◿", "Фаска"], ["⋮⋮", "Массив"], ["✸", "Расчленить"], ["✕", "Удалить"]]],
+  ["Объединение", [["⟆", "Соединить"], ["⊔", "Объединить"], ["⊟", "Вычесть"], ["⊓", "Пересечение"], ["⊥", "Разрезать"], ["✁", "Разрезать объектом"]]],
+  ["Штриховка", [["▨", "Штриховка"]]]];
+// Palette: search box + compact toggle, collapsible group headers, 36 px buttons (icon + label, 2 columns; icons only in compact mode)
+function paletteBtn(glyph, label, active, compact) {
+  const b = al("HORIZONTAL", {name: "Tool " + label, gap: 6, pad: compact ? 0 : [0, 8, 0, 6], radius: 7, fill: active ? "selected" : undefined, align: "CENTER"});
+  if (compact) { fixed(b, 36, 36); b.primaryAxisAlignItems = "CENTER"; } else { fixed(b, 117, 36); }
+  b.appendChild(txt(glyph, {size: 14, color: active ? "accent" : "text"}));
+  if (!compact) { const l = txt(label, {size: 11, color: "text"}); l.textTruncation = "ENDING"; l.resize(80, l.height); b.appendChild(l); }
+  return b;
 }
-grid.appendChild(tools);
+function palette(o = {}) {
+  const w = o.width || 260, compact = !!o.compact;
+  const d = al("VERTICAL", {name: "Инструменты", pad: 8, gap: 6, fill: "panel", align: "MIN"}); fixed(d, w, o.height || 830); d.strokes = [fill("border")]; d.strokeWeight = 1;
+  const top = al("HORIZONTAL", {gap: 4, align: "CENTER"}); top.resize(w - 16, 28); top.primaryAxisSizingMode = "FIXED";
+  const sb = al("HORIZONTAL", {gap: 6, pad: [4, 8, 4, 8], radius: 7, fill: "input", stroke: o.query ? "accent" : "border", align: "CENTER"}); sb.layoutGrow = 1; sb.resize(100, 28);
+  sb.appendChild(txt("⌕", {size: 12, color: "muted"})); sb.appendChild(txt(o.query || "Поиск инструмента…", {size: 12, color: o.query ? "text" : "faint"})); top.appendChild(sb);
+  const cb = al("HORIZONTAL", {pad: 0, radius: 6, fill: compact ? "selected" : undefined}); fixed(cb, 28, 28); cb.primaryAxisAlignItems = "CENTER"; cb.counterAxisAlignItems = "CENTER"; cb.appendChild(txt("▦", {size: 12, color: compact ? "accent" : "muted"})); top.appendChild(cb);
+  d.appendChild(top);
+  for (const [title, tools] of TOOL_GROUPS) {
+    const shown = o.query ? tools.filter(([, l]) => l.toLowerCase().includes(o.query.toLowerCase())) : tools;
+    if (!shown.length || (o.query && title === "Избранное")) continue;
+    const collapsed = (o.collapsed || []).includes(title);
+    const h = al("HORIZONTAL", {gap: 6, pad: [3, 6, 3, 6], radius: 6, fill: "hover", align: "CENTER"}); h.resize(w - 16, 22); h.primaryAxisSizingMode = "FIXED";
+    h.appendChild(txt(collapsed ? "▸" : "▾", {size: 10, color: "muted"})); h.appendChild(txt(title, {size: 12, style: "Semi Bold"})); d.appendChild(h);
+    if (collapsed) continue;
+    const g = al("HORIZONTAL", {gap: 3}); g.layoutWrap = "WRAP"; g.counterAxisSpacing = 3; g.resize(w - 16, 10); g.primaryAxisSizingMode = "FIXED";
+    for (const [gl, l] of shown) g.appendChild(paletteBtn(gl, l, l === o.active, compact));
+    d.appendChild(g);
+  }
+  return d;
+}
+const tools = comp("Dock / Инструменты", "VERTICAL", {pad: 0, gap: 0, fill: "panel", align: "MIN"}); fixed(tools, 260, 760); tools.appendChild(palette({width: 260, height: 760, active: "Линия"})); grid.appendChild(tools);
+const toolsC = comp("Dock / Инструменты / компактный", "VERTICAL", {pad: 0, gap: 0, fill: "panel", align: "MIN"}); fixed(toolsC, 200, 520); toolsC.appendChild(palette({width: 200, height: 520, compact: true, active: "Линия"})); grid.appendChild(toolsC);
+const toolsS = comp("Dock / Инструменты / поиск", "VERTICAL", {pad: 0, gap: 0, fill: "panel", align: "MIN"}); fixed(toolsS, 260, 260); toolsS.appendChild(palette({width: 260, height: 260, query: "раз"})); grid.appendChild(toolsS);
 
 // --- Layers dock
 const layers = comp("Dock / Слои", "VERTICAL", {pad: 0, gap: 0, fill: "card", stroke: "border", align: "MIN"}); fixed(layers, 300, 190);
@@ -154,7 +184,28 @@ const cb = al("HORIZONTAL", {pad: [5, 10, 5, 10], radius: 7, fill: "input", stro
 // --- Status bar
 const st = comp("Status bar", "HORIZONTAL", {pad: [4, 12, 4, 12], gap: 24, fill: "panel", stroke: "border", align: "CENTER"}); fixed(st, 900, 26);
 st.appendChild(txt("X 3540.00   Y 1210.50", {family: MONO, size: 11, color: "muted"})); st.appendChild(txt("Линия", {size: 11, color: "muted"})); const ssp = al("HORIZONTAL"); ssp.layoutGrow = 1; st.appendChild(ssp);
+const mg = al("HORIZONTAL", {name: "Magnet toggle", gap: 4, pad: [2, 8, 2, 8], radius: 6, fill: "selected", stroke: "accent", align: "CENTER"}); mg.appendChild(txt("⌁ Сетка 1 мм", {size: 11, color: "accent"})); mg.appendChild(txt("▾", {size: 9, color: "muted"})); st.appendChild(mg);
 st.appendChild(txt("Конечная точка", {size: 11, color: "snap"})); st.appendChild(txt("Миллиметры  ·  сетка 100 мм", {size: 11, color: "muted"})); grid.appendChild(st);
+
+// --- Inline editors (double-click): dimension value, line length / angle, rectangle width × height, circle, text
+const edRow = comp("Inline editor", "HORIZONTAL", {gap: 24, pad: 16, fill: "canvas", stroke: "border", align: "MIN"});
+function inlineEd(fields) {
+  const e = al("VERTICAL", {gap: 4, pad: [6, 8, 6, 8], radius: 8, fill: "card", stroke: "accent"});
+  for (const [l, v, focus] of fields) { const r = al("HORIZONTAL", {gap: 6, align: "CENTER"}); if (fields.length > 1) { const lt = txt(l, {size: 11, color: "muted"}); lt.resize(52, lt.height); r.appendChild(lt); }
+    const box = al("HORIZONTAL", {pad: [2, 6, 2, 6], radius: 5, fill: "input", stroke: focus ? "accent" : "border"}); box.resize(90, 24); box.primaryAxisSizingMode = "FIXED"; box.appendChild(txt(v, {family: MONO, size: 12})); r.appendChild(box); e.appendChild(r); }
+  if (fields.length > 1) e.appendChild(txt("Enter — применить · Esc — отмена", {size: 9, color: "faint"}));
+  return e;
+}
+for (const f of [[["Размер", "1000", true]], [["Длина", "2600", true], ["Угол", "90°"]], [["Ширина", "4000", true], ["Высота", "3000"]], [["Радиус", "450", true], ["Диаметр", "900"]], [["Текст", "Кухня", true]]]) edRow.appendChild(inlineEd(f));
+grid.appendChild(edRow);
+// --- Grid magnet marker: filled accent square at the rounded point + coordinates
+const mgC = comp("Snap / Grid magnet", "VERTICAL", {pad: 0, fill: "canvas", stroke: "border"}); fixed(mgC, 200, 120); mgC.clipsContent = true;
+const mgI = figma.createFrame(); mgI.resize(200, 120); mgI.fills = []; mgC.appendChild(mgI); mgI.layoutPositioning = "ABSOLUTE";
+for (let x = 0; x <= 200; x += 20) mgI.appendChild(line(x, 0, x, 120, "grid", 1)); for (let y = 0; y <= 120; y += 20) mgI.appendChild(line(0, y, 200, y, "grid", 1));
+mgI.appendChild(line(0, 60, 200, 60, "crosshair", 1)); mgI.appendChild(line(100, 0, 100, 120, "crosshair", 1));
+const mgM = figma.createRectangle(); mgM.resize(8, 8); mgM.x = 96; mgM.y = 56; mgM.fills = [fill("accent")]; mgI.appendChild(mgM);
+const mgL = al("HORIZONTAL", {pad: [2, 6, 2, 6], radius: 4, fill: "card", stroke: "border"}); mgL.x = 110; mgL.y = 34; mgL.appendChild(txt("Сетка · 3500, 2600", {size: 10, color: "snap"})); mgI.appendChild(mgL);
+grid.appendChild(mgC);
 
 // --- Canvas sample with grid, entities, selection grips, snap marker, crosshair
 const cv = comp("Canvas / sample", "VERTICAL", {pad: 0, fill: "canvas", stroke: "border"}); fixed(cv, 520, 320); cv.clipsContent = true;
@@ -194,7 +245,7 @@ grid.appendChild(wc);
 // --- Dialog (document settings) & toast
 const dlg = comp("Dialog / Параметры документа", "VERTICAL", {pad: 20, gap: 10, fill: "bg", stroke: "border", radius: 12, align: "MIN"}); fixed(dlg, 420, 300);
 dlg.appendChild(txt("Параметры документа", {family: SERIF, size: 17}));
-for (const [l, v] of [["Единицы", "Миллиметры"], ["Знаков", "2"], ["Шаг сетки", "10 мм"], ["Высота текста", "3.5 мм"], ["Автор", ""]]) dlg.appendChild(field(l, v, 240));
+for (const [l, v] of [["Единицы", "Миллиметры"], ["Знаков", "2"], ["Шаг сетки", "10 мм"], ["Шаг привязки", "1 мм"], ["Высота текста", "3.5 мм"], ["Автор", ""]]) dlg.appendChild(field(l, v, 240));
 const dr = al("HORIZONTAL", {gap: 8}); const dsp = al("HORIZONTAL"); dsp.layoutGrow = 1; dr.appendChild(dsp); dr.resize(380, 30); dr.primaryAxisSizingMode = "FIXED"; const cancel = bDef.createInstance(); dr.appendChild(cancel); const okb = bAcc.createInstance(); dr.appendChild(okb); dlg.appendChild(dr);
 grid.appendChild(dlg);
 const toast = comp("Toast", "HORIZONTAL", {pad: [8, 16, 8, 16], radius: 10, fill: "text"}); toast.appendChild(txt("Нужен замкнутый контур: окружность, замкнутая полилиния, сплайн или эллипс", {color: "bg", size: 12})); grid.appendChild(toast);

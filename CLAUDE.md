@@ -2,9 +2,9 @@
 
 - Пси / PSI (Ψ) — универсальная CAD-система, этап 00–01 (Draft MVP): C++20, Qt 6 Widgets, CMake + Ninja, macOS 11+ Intel x64.
   Russian UI, Claude-like style (ivory/charcoal, terracotta #D97757 accent, serif headings, minimal animation) — `ui/theme.cpp`.
-- Layout: `core/` (geometry, units, attributes, document, command-system, project), `modules/drawing/` (sheets),
-  `modules/draft/` (tools, snap, input parser, demo scenario), `io/native` (`.psi` = ZIP + JSON, schema `kSchemaVersion`),
-  `io/dxf`, `io/pdf`, `rendering/` (renderer + `Viewport`), `ui/` (theme, icons), `apps/psi-desktop/` (main window,
+- Layout: `core/` (geometry incl. `ops` = join / split / cut, units, attributes, document, command-system, project), `modules/drawing/` (sheets),
+  `modules/draft/` (tools, `boolean` = QPainterPath set ops, `edit` = value editing for the double-click editor, snap + grid magnet, input parser, demo scenario), `io/native` (`.psi` = ZIP + JSON, schema `kSchemaVersion`),
+  `io/dxf`, `io/pdf`, `rendering/` (renderer + `Viewport`), `ui/` (theme, icons, `inline_editor`), `apps/psi-desktop/` (main window,
   docks, sheets page, dialogs, welcome, `--selftest`), `tests/` (QTest, run offscreen), `packaging/macos/`, `docs/`.
 - Build: `cmake --preset release && cmake --build --preset release && ctest --preset release`; `psi --selftest` must stay green.
   Build must be warning-free (`-Wall -Wextra`), `QT_NO_KEYWORDS` (use `Q_SIGNALS` / `Q_EMIT`).
@@ -16,4 +16,6 @@
 - CI: `.github/workflows/psi-macos.yml` — build + tests on every push, release on tag `psi-v*` or `workflow_dispatch`
   with `release_version`. No secrets are needed.
 - Never commit API keys or proprietary SDKs. OCCT is behind `PSI_WITH_OCCT` (off) for stages 02+.
+- Adding a tool: `toolIds()` / `createTool()` in `modules/draft/tools.cpp`, an icon in `ui/icons.cpp`, a group in `ToolsPanel`
+  (`apps/psi-desktop/panels.cpp`), hotkey + alias + menu in `main_window.cpp`, the count in `selftest.cpp`, README tool list.
 - Commit messages in Russian; one logical step per commit.
