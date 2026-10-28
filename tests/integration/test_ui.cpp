@@ -210,6 +210,41 @@ private Q_SLOTS:
         view_->tool()->click({35, 50}, false);
         QVERIFY(std::abs(d.entity(s)->pts[1].x - 100) < 1e-6);
     }
+    void joinBooleanSplitViaTools() {
+        Document& d = project_.document();
+        for (auto [a, b] : std::vector<std::pair<Point, Point>>{{{0, 0}, {80, 0}}, {{80, 0}, {80, 50}}, {{80, 50}, {0, 50}}, {{0, 50}, {0, 0}}}) d.addEntity(makeLine(a, b));
+        QSet<quint64> all; for (quint64 id : d.entityIds()) all.insert(id);
+        view_->setSelection(all);
+        start("join"); view_->tool()->selectionDone();
+        QCOMPARE(d.entityCount(), size_t(1));
+        const Entity* rect = d.entity(d.entityIds().front());
+        QVERIFY(rect->type == EntityType::Polyline && rect->closed && rect->pts.size() == 4);
+        project_.commands().undo(); QCOMPARE(d.entityCount(), size_t(4));
+        project_.commands().redo(); QCOMPARE(d.entityCount(), size_t(1));
+        // union with a second rectangle by two picks
+        d.addEntity(makeRectangle({40, 20}, {120, 70}));
+        view_->clearSelection();
+        start("union");
+        view_->tool()->click({0, 25}, false); view_->tool()->click({120, 45}, false);
+        QCOMPARE(d.entityCount(), size_t(1));
+        QCOMPARE(d.entity(d.entityIds().front())->pts.size(), size_t(8));
+        // Shift keeps the originals
+        d.addEntity(makeCircle({0, 0}, 20));
+        start("subtract");
+        view_->tool()->click({120, 45}, false); view_->tool()->click({-20, 0}, true);
+        QCOMPARE(d.entityCount(), size_t(3));
+        // split a line at its midpoint
+        project_.newProject();
+        d.addEntity(makeLine({0, 0}, {100, 0}));
+        start("split"); view_->tool()->click({50, 0}, false);
+        QCOMPARE(d.entityCount(), size_t(2));
+        for (quint64 id : d.entityIds()) QVERIFY(std::abs(dist(d.entity(id)->pts[0], d.entity(id)->pts[1]) - 50) < 1e-6);
+        // cut by object: a circle cuts the horizontal line into three
+        project_.newProject();
+        d.addEntity(makeLine({0, 0}, {100, 0})); d.addEntity(makeCircle({50, 0}, 10));
+        start("cut"); view_->tool()->click({10, 0}, false); view_->tool()->click({50, 10}, false);
+        QCOMPARE(d.entityCount(), size_t(4));
+    }
     void zoomAndRender() {
         Document& d = project_.document();
         d.addEntity(makeRectangle({0, 0}, {1000, 500}));

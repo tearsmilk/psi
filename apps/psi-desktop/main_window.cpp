@@ -160,7 +160,9 @@ void MainWindow::buildActions() {
                                                {"dim-angle", QKeySequence("Shift+A")}, {"hatch", QKeySequence("H")}, {"move", QKeySequence("M")}, {"copy", QKeySequence("Shift+C")},
                                                {"rotate", QKeySequence("Shift+O")}, {"mirror", QKeySequence("Shift+M")}, {"scale", QKeySequence("Shift+S")}, {"offset", QKeySequence("O")},
                                                {"trim", QKeySequence("Shift+T")}, {"extend", QKeySequence("Shift+E")}, {"fillet", QKeySequence("F")}, {"chamfer", QKeySequence("Shift+F")},
-                                               {"array", QKeySequence("Shift+Y")}, {"explode", QKeySequence("X")}, {"delete", QKeySequence()}};
+                                               {"array", QKeySequence("Shift+Y")}, {"explode", QKeySequence("X")}, {"delete", QKeySequence()},
+                                               {"join", QKeySequence("J")}, {"union", QKeySequence("Shift+U")}, {"subtract", QKeySequence("Shift+B")}, {"intersect", QKeySequence("Shift+I")},
+                                               {"split", QKeySequence("Shift+X")}, {"cut", QKeySequence("Shift+K")}};
     for (const QString& id : toolIds()) {
         if (id == "delete") continue;
         QString tid = id;
@@ -196,6 +198,8 @@ void MainWindow::buildMenus() {
     for (const char* id : {"text", "leader", "dim", "dim-h", "dim-v", "dim-radius", "dim-diameter", "dim-angle", "hatch"}) create->addAction(actions_[QString("tool.") + id]);
     QMenu* toolsM = mb->addMenu(QStringLiteral("Инструменты"));
     for (const char* id : {"move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode"}) toolsM->addAction(actions_[QString("tool.") + id]);
+    toolsM->addSeparator();
+    for (const char* id : {"join", "union", "subtract", "intersect", "split", "cut"}) toolsM->addAction(actions_[QString("tool.") + id]);
     QMenu* window = mb->addMenu(QStringLiteral("Окно"));
     add(window, {"ws.welcome", "ws.draft", "ws.sheets"});
     window->addSeparator();
@@ -334,7 +338,7 @@ void MainWindow::runCommandLine() {
                                              {"a", "arc"}, {"el", "ellipse"}, {"e", "ellipse"}, {"spl", "spline"}, {"s", "spline"}, {"t", "text"}, {"le", "leader"}, {"d", "dim"}, {"dim", "dim"},
                                              {"dh", "dim-h"}, {"dv", "dim-v"}, {"dr", "dim-radius"}, {"dd", "dim-diameter"}, {"da", "dim-angle"}, {"h", "hatch"}, {"m", "move"}, {"co", "copy"},
                                              {"ro", "rotate"}, {"mi", "mirror"}, {"sc", "scale"}, {"o", "offset"}, {"tr", "trim"}, {"ex", "extend"}, {"f", "fillet"}, {"cha", "chamfer"},
-                                             {"ar", "array"}, {"x", "explode"}, {"del", "delete"}, {"e!", "delete"}, {"u", "undo"}, {"z", "zoom"}, {"ze", "zoomExtents"}};
+                                             {"ar", "array"}, {"x", "explode"}, {"j", "join"}, {"un", "union"}, {"su", "subtract"}, {"in", "intersect"}, {"br", "split"}, {"cut", "cut"}, {"del", "delete"}, {"e!", "delete"}, {"u", "undo"}, {"z", "zoom"}, {"ze", "zoomExtents"}};
     QString low = text.toLower();
     Tool* tool = view_->tool();
     bool consumed = tool && tool->input(text);

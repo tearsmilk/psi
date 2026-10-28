@@ -54,7 +54,7 @@ int runSelfTest() {
         check(doc.entityCount() == before + 2, QStringLiteral("инструмент «Линия»: две линии"));
         project.commands().undo(); project.commands().undo();
         check(doc.entityCount() == before, QStringLiteral("отмена"));
-        check(toolIds().size() == 30, QStringLiteral("реестр инструментов"));
+        check(toolIds().size() == 36, QStringLiteral("реестр инструментов"));
         for (const QString& id : toolIds()) { auto t = createTool(id, ctx); if (!t) { check(false, "createTool " + id); break; } }
     }
 
