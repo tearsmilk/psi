@@ -1,7 +1,8 @@
-# Архитектура Пси (этапы 00–01, 02 «Эскиз», 05 «Интерьер»)
+# Архитектура Пси (этапы 00–01, 02 «Эскиз» и «Модель», 05 «Интерьер»)
 
 ```
-apps/psi-desktop ──► psi_ui (rendering, modules/draft, sketcher/sketch_view, interior/interior_view, io/pdf, ui)
+apps/psi-desktop ──► psi_ui (rendering incl. view3d, modules/draft, sketcher/sketch_view, interior/interior_view, io/pdf, ui)
+                        ├──► psi_model (modules/model: kernel + part, io/step, io/stl) ──► Open CASCADE   [PSI_WITH_OCCT]
                         └──► psi_core (core, modules/drawing, modules/sketcher/sketch, modules/interior/building, io/native, io/dxf)
                                                                            │
                                                                            └── только Qt Core + zlib: без GUI, тестируется headless
@@ -98,6 +99,29 @@ apps/psi-desktop ──► psi_ui (rendering, modules/draft, sketcher/sketch_vie
   создаёт слои «Стены», «Проёмы», «Мебель», «Помещения» и выдаёт контуры, двери с дугой, окна, мебель с подписью,
   подписи помещений одной командой.
 
+## Модель: ядро, дерево построения, 3D-вид (`modules/model`, `rendering/view3d`)
+
+- **`Kernel`** (`kernel.h`) — фасад над OCCT без утечки заголовков (ADR-005): `Profile` (контуры с дугами по bulge и
+  окружности; внешний контур определяется по площади, вложенные становятся отверстиями через `BRepClass_FaceClassifier`)
+  → грань → `extrude` (`BRepPrimAPI_MakePrism`, симметрично / две стороны) и `revolve`; `cylinder` / `cone` для отверстий
+  и зенковок; `boolean` (`BRepAlgoAPI_*` + `ShapeUpgrade_UnifySameDomain`), `fillet` / `chamfer` (`BRepFilletAPI_*`,
+  рёбра по индексам `TopTools_IndexedMapOfShape`, пусто — все), `translate` / `rotate` / `mirror`, `shell`
+  (`MakeThickSolidByJoin`), `fromMesh` (грань с триангуляцией для STL). `Shape` даёт `massProps` (GProp), `bbox`, `mesh`
+  (`BRepMesh_IncrementalMesh`; нормали из `BRepGProp_Face::Normal`, рёбра через `GCPnts_TangentialDeflection`),
+  `planeOfFace` / `faceNormalAt` для эскизов на гранях и отверстий, `toBrep` / `fromBrep`.
+- **`Part`** — операции `Feature{type, name, suppressed, params}`; ключи параметров описаны в `part.h`. `rebuild()`
+  перестраивает с первой изменённой операции по кэшу состояний (`states_`); ошибка операции сохраняется в `Feature::error`
+  (имя + причина), тела остаются последними удачными. Режимы тел: `new` / `add` / `cut`, индекс тела по умолчанию —
+  последнее. Массивы и зеркало переносят `toolShape()` исходной операции и применяют копии по одной. Массовые
+  характеристики суммируются по телам; масса = объём × плотность материала (г/см³).
+- **`View3D`** — программный растеризатор: камера Z-вверх (yaw / pitch / dist, перспектива `focal = h/2·ctg(fov/2)` или
+  ортогональ с тем же масштабом), треугольники в `QImage` с z-буфером и буфером идентификаторов `(тело+1)<<20 | грань`,
+  Ламберт по сглаженным нормалям, рёбра / сетка — сглаженные линии с проверкой глубины по подотрезкам, оверлей выбора
+  по буферу идентификаторов. Выбор рёбер и вершин — ближайший на экране с проверкой видимости по z-буферу.
+- **`ModelPage`** — детали в `models/<id>.json` (+ `assets/model_<id>.brep`), отмена снимками (`SnapshotStack`),
+  диалог параметров по схеме (`schemaFor`), подстановка из выбора в 3D-виде (грань → отверстие / эскиз / оболочка,
+  ребро → скругление / фаска), импорт STEP (операция «Импорт», тело участвует в булевых) и STL (тело-сетка).
+
 ## Потоки
 
 Разбор DXF выполняется в рабочем `QThread` с `QProgressDialog` и отменой; результат применяется в главном потоке одной
@@ -111,5 +135,6 @@ apps/psi-desktop ──► psi_ui (rendering, modules/draft, sketcher/sketch_vie
 
 ## Что дальше (этапы 02–06)
 
-Этапы 02 «Эскиз» и 05 «Интерьер» реализованы в 2D. Дальше: 3D на OCCT (`PSI_WITH_OCCT`), сборки, чертежи с модели —
-рабочие области «Модель», «Сборка», «Чертёж 3D» заведены в панели и отключены.
+Этапы 02 «Эскиз» и «Модель» (параметрическое 3D на OCCT, `PSI_WITH_OCCT`) и 05 «Интерьер» реализованы. Дальше: сборки
+(ограничения между деталями на тех же `Shape`), чертежи с модели (проекции `HLRBRep` в листы), деревья эскизов на гранях с
+ассоциативностью к рёбрам — рабочие области «Сборка», «Чертёж 3D» заведены в панели и отключены.

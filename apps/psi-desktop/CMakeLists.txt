@@ -1,5 +1,8 @@
 file(GLOB PSI_APP_SRC CONFIGURE_DEPENDS *.cpp *.h)
 list(REMOVE_ITEM PSI_APP_SRC "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
+if(NOT PSI_WITH_OCCT)
+  list(FILTER PSI_APP_SRC EXCLUDE REGEX "model_page\.(cpp|h)$")   # рабочее пространство «Модель» только с OCCT
+endif()
 # main window, docks and pages as a library so the UI tests can drive the real window
 qt_add_library(psi_app STATIC ${PSI_APP_SRC})
 target_link_libraries(psi_app PUBLIC psi_ui)

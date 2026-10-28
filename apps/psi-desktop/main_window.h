@@ -24,6 +24,7 @@ class PropertiesPanel;
 class TreePanel;
 class SketchPage;
 class InteriorPage;
+class ModelPage;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -32,7 +33,7 @@ public:
     bool openPath(const QString& path);        // .psi or .dxf
     void importDxf(const QString& path);
     void loadDemo();
-    enum Page { PageWelcome = 0, PageDraft = 1, PageSheets = 2, PageSketch = 3, PageInterior = 4 };
+    enum Page { PageWelcome = 0, PageDraft = 1, PageSheets = 2, PageSketch = 3, PageInterior = 4, PageModel = 5 };
     void showPage(Page p);
 
 protected:
@@ -79,6 +80,7 @@ private:
     SheetsPage* sheets_ = nullptr;
     SketchPage* sketch_ = nullptr;
     InteriorPage* interior_ = nullptr;
+    ModelPage* model_ = nullptr;             // nullptr, если собрано без OCCT
     QLabel* dofLbl_ = nullptr;
     QWidget* draftPage_ = nullptr;
     ToolsPanel* tools_ = nullptr;

@@ -615,6 +615,7 @@ void TreePanel::refresh() {
             QJsonObject o = QJsonDocument::fromJson(it.value()).object();
             QString label = o.value("name").toString(it.key().mid(prefix.size()));
             if (kind == "sketch") label += QStringLiteral("  (%1 об., %2 огр.)").arg(o.value("entities").toArray().size()).arg(o.value("constraints").toArray().size());
+            else if (kind == "model") label += QStringLiteral("  (операций: %1)").arg(o.value("features").toArray().size());
             else label += QStringLiteral("  (этажей: %1)").arg(o.value("floors").toArray().size());
             items.push_back({it.key(), label});
         }
@@ -625,6 +626,7 @@ void TreePanel::refresh() {
     };
     partsNode(QStringLiteral("sketches/"), QStringLiteral("Эскизы"), "sketch", "sketch");
     partsNode(QStringLiteral("interior/"), QStringLiteral("Интерьер"), "interior", "interior");
+    partsNode(QStringLiteral("models/"), QStringLiteral("Модели"), "model", "model");
     tree_->addTopLevelItem(root);
     root->setExpanded(true); drawing->setExpanded(true); sheets->setExpanded(true);
     updating_ = false;

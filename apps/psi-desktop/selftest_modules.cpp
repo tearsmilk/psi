@@ -1,6 +1,11 @@
 #include "selftest.h"
 #include "interior_page.h"
 #include "sketch_page.h"
+#ifdef PSI_WITH_OCCT
+#include "model_page.h"
+#include "io/step/step.h"
+#include <QJsonArray>
+#endif
 #include "core/project/project.h"
 #include "io/native/psi_file.h"
 #include "modules/interior/building.h"
@@ -123,6 +128,44 @@ int runModulesSelfTest(const std::function<void(bool, const QString&)>& check) {
         c(reopened.open(path, &err), QStringLiteral("страницы: проект открыт (%1)").arg(err));
         c(sp2.sketches().size() == 2 && ip2.building() && ip2.building()->floor(0).walls.size() == 1, QStringLiteral("страницы: после открытия 2 эскиза и здание с 1 стеной"));
     }
+#ifdef PSI_WITH_OCCT
+    // ---- модель: эскиз 120×60 → выдавливание 20 → сквозное отверстие Ø10 → экспорт STEP → открытие проекта
+    {
+        Project project;
+        ModelPage mp(project);
+        mp.activate();
+        mp.addPart(QStringLiteral("Плита"));
+        sk::Sketch k;
+        auto line = [&](double x1, double y1, double x2, double y2) { sk::SketchEntity e; e.kind = sk::Kind::Line; e.p = {x1, y1, x2, y2}; k.addEntity(e); };
+        line(0, 0, 120, 0); line(120, 0, 120, 60); line(120, 60, 0, 60); line(0, 60, 0, 0);
+        quint64 sid = mp.addFeature(md::FeatureType::Sketch, {{"plane", "XY"}, {"sketch", k.toJson()}});
+        QElapsedTimer t; t.start();
+        mp.addFeature(md::FeatureType::Extrude, {{"sketch", double(sid)}, {"distance", 20}, {"mode", "new"}});
+        const md::Part* part = mp.currentPart();
+        c(part && part->bodies().size() == 1 && std::abs(part->massProps().volume - 120.0 * 60 * 20) < 1e-3, QStringLiteral("модель: выдавливание 120×60×20 (%1 мс, %2)").arg(t.elapsed()).arg(md::Kernel::version()));
+        mp.addFeature(md::FeatureType::Hole, {{"point", QJsonArray{60, 30, 20}}, {"dir", QJsonArray{0, 0, 1}}, {"diameter", 10}, {"through", true}});
+        part = mp.currentPart();
+        c(part && std::abs(part->massProps().volume - (120.0 * 60 * 20 - M_PI * 25 * 20)) < 1e-3, QStringLiteral("модель: сквозное отверстие Ø10 уменьшило объём на πr²h"));
+        c(part && part->features().size() == 3 && mp.canUndo(), QStringLiteral("модель: 3 операции в дереве, отмена доступна"));
+        c(project.foreignParts().contains(QStringLiteral("models/1.json")) && project.foreignParts().contains(QStringLiteral("assets/model_1.brep")), QStringLiteral("модель: деталь сохранена в models/1.json + кэш BREP"));
+        QImage img = mp.view()->renderToImage({320, 240});
+        c(!img.isNull() && img.width() == 320, QStringLiteral("модель: 3D-вид отрисован офскрин"));
+        QTemporaryDir tmp; QString err;
+        QString step = tmp.filePath(QStringLiteral("plate.step"));
+        c(mp.exportStep(step, &err) && QFileInfo(step).size() > 1000, QStringLiteral("модель: экспорт STEP (%1)").arg(err.isEmpty() ? QStringLiteral("%1 байт").arg(QFileInfo(step).size()) : err));
+        StepReport rr; auto back = Step::read(step, &rr, &err);
+        c(back.size() == 1 && std::abs(back[0].shape.massProps().volume - part->massProps().volume) < 1e-3, QStringLiteral("модель: STEP прочитан обратно, объём совпал"));
+        QString stl = tmp.filePath(QStringLiteral("plate.stl"));
+        c(mp.exportStl(stl, true, &err), QStringLiteral("модель: экспорт STL (%1)").arg(err.isEmpty() ? QStringLiteral("ок") : err));
+        mp.undo();
+        c(mp.currentPart() && mp.currentPart()->features().size() == 2 && mp.canRedo(), QStringLiteral("модель: отмена отверстия"));
+        mp.redo();
+        QString path = tmp.filePath(QStringLiteral("model.psi"));
+        c(project.saveAs(path, &err), QStringLiteral("модель: проект сохранён (%1)").arg(err));
+        Project reopened; ModelPage mp2(reopened);
+        c(reopened.open(path, &err) && mp2.parts().size() == 1 && mp2.parts()[0].features().size() == 3 && std::abs(mp2.parts()[0].massProps().volume - part->massProps().volume) < 1e-3, QStringLiteral("модель: после открытия деталь перестроена, объём совпал"));
+    }
+#endif
     return fails;
 }
 

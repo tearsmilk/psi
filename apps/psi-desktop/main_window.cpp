@@ -12,6 +12,9 @@
 #include "sheets_page.h"
 #include "sketch_page.h"
 #include "interior_page.h"
+#ifdef PSI_WITH_OCCT
+#include "model_page.h"
+#endif
 #include "ui/icons.h"
 #include "ui/theme.h"
 #include "welcome.h"
@@ -81,6 +84,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     stack_->addWidget(sheets_);
     stack_->addWidget(sketch_);
     stack_->addWidget(interior_);
+#ifdef PSI_WITH_OCCT
+    model_ = new ModelPage(project_);
+    stack_->addWidget(model_);
+#else
+    stack_->addWidget(new QWidget);   // место страницы «Модель» (собрано без OCCT)
+#endif
     setCentralWidget(stack_);
 
     buildActions();
@@ -110,6 +119,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(sketch_, &SketchPage::dofChanged, this, [this](int dof) { dofLbl_->setText(dof >= 0 ? QStringLiteral("Свободных степеней: %1").arg(dof) : QString()); dofLbl_->setVisible(stack_->currentIndex() == PageSketch); });
     connect(sketch_, &SketchPage::sketchesChanged, this, [this] { if (tree_) tree_->refresh(); });
     connect(interior_, &InteriorPage::buildingChanged, this, [this] { if (tree_) tree_->refresh(); });
+#ifdef PSI_WITH_OCCT
+    connect(model_, &ModelPage::undoChanged, this, &MainWindow::updateUndoRedo);
+    connect(model_, &ModelPage::statusMessage, this, [this](const QString& t) { statusBar()->showMessage(t, 5000); });
+    connect(model_, &ModelPage::modelsChanged, this, [this] { if (tree_) tree_->refresh(); });
+#endif
     connect(command_, &QLineEdit::returnPressed, this, &MainWindow::runCommandLine);
     connect(view_, &Viewport::cursorMoved, this, [this](Point p) { lastCursor_ = p; updateStatus(); });
     command_->installEventFilter(this);
@@ -161,12 +175,18 @@ void MainWindow::buildActions() {
     action("undo", QStringLiteral("Отменить"), "undo", QKeySequence::Undo, [this] {
         if (stack_->currentIndex() == PageSketch) sketch_->undo();
         else if (stack_->currentIndex() == PageInterior) interior_->undo();
+#ifdef PSI_WITH_OCCT
+        else if (stack_->currentIndex() == PageModel) model_->undo();
+#endif
         else project_.commands().undo();
         view_->invalidate();
     });
     action("redo", QStringLiteral("Повторить"), "redo", QKeySequence("Ctrl+Shift+Z"), [this] {
         if (stack_->currentIndex() == PageSketch) sketch_->redo();
         else if (stack_->currentIndex() == PageInterior) interior_->redo();
+#ifdef PSI_WITH_OCCT
+        else if (stack_->currentIndex() == PageModel) model_->redo();
+#endif
         else project_.commands().redo();
         view_->invalidate();
     });
@@ -208,6 +228,7 @@ void MainWindow::buildActions() {
     action("ws.sheets", QStringLiteral("Листы"), "sheet", QKeySequence("Ctrl+2"), [this] { showPage(PageSheets); });
     action("ws.sketch", QStringLiteral("Эскиз"), "sketch", QKeySequence("Ctrl+3"), [this] { showPage(PageSketch); });
     action("ws.interior", QStringLiteral("Интерьер"), "interior", QKeySequence("Ctrl+4"), [this] { showPage(PageInterior); });
+    action("ws.model", QStringLiteral("Модель"), "model", QKeySequence("Ctrl+5"), [this] { if (model_) showPage(PageModel); })->setEnabled(model_ != nullptr);
     action("ws.welcome", QStringLiteral("Начальный экран"), "", QKeySequence("Ctrl+0"), [this] { showPage(PageWelcome); });
     action("help", QStringLiteral("Справка по вводу"), "", QKeySequence::HelpContents, [this] {
         QMessageBox::information(this, QStringLiteral("Ввод координат"),
@@ -237,7 +258,7 @@ void MainWindow::buildMenus() {
     toolsM->addSeparator();
     for (const char* id : {"join", "union", "subtract", "intersect", "split", "cut"}) toolsM->addAction(actions_[QString("tool.") + id]);
     QMenu* window = mb->addMenu(QStringLiteral("Окно"));
-    add(window, {"ws.welcome", "ws.draft", "ws.sheets", "ws.sketch", "ws.interior"});
+    add(window, {"ws.welcome", "ws.draft", "ws.sheets", "ws.sketch", "ws.interior", "ws.model"});
     window->addSeparator();
     // dock toggles are appended in buildDocks()
     QMenu* help = mb->addMenu(QStringLiteral("Справка"));
@@ -259,7 +280,7 @@ void MainWindow::buildWorkspaceBar() {
         {"draft", QStringLiteral("Черчение"), "draft", true, QStringLiteral("2D-черчение: линии, размеры, слои")},
         {"sheets", QStringLiteral("Листы"), "sheet", true, QStringLiteral("Листы, основная надпись, PDF")},
         {"sketch", QStringLiteral("Эскиз"), "sketch", true, QStringLiteral("Параметрический эскиз: примитивы, ограничения, решатель")},
-        {"model", QStringLiteral("Модель"), "model", false, QStringLiteral("3D-моделирование — этап 03")},
+        {"model", QStringLiteral("Модель"), "model", model_ != nullptr, model_ ? QStringLiteral("Модель: эскиз → выдавливание, отверстия, скругления, массивы, STEP / STL") : QStringLiteral("Собрано без OCCT")},
         {"assembly", QStringLiteral("Сборка"), "assembly", false, QStringLiteral("Сборки — этап 04")},
         {"interior", QStringLiteral("Интерьер"), "interior", true, QStringLiteral("Интерьер: стены, проёмы, помещения, мебель, ведомости")},
         {"drawing", QStringLiteral("Чертёж 3D"), "drawing", false, QStringLiteral("Виды с модели — этап 06")}};
@@ -277,6 +298,7 @@ void MainWindow::buildWorkspaceBar() {
         if (w.id == "sheets") connect(b, &QToolButton::clicked, this, [this] { showPage(PageSheets); });
         if (w.id == "sketch") connect(b, &QToolButton::clicked, this, [this] { showPage(PageSketch); });
         if (w.id == "interior") connect(b, &QToolButton::clicked, this, [this] { showPage(PageInterior); });
+        if (w.id == "model") connect(b, &QToolButton::clicked, this, [this] { showPage(PageModel); });
     }
     auto* spacer = new QWidget; spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolbar_->addWidget(spacer);
@@ -484,10 +506,14 @@ void MainWindow::showPage(Page p) {
     if (wsButtons_.contains("sheets")) wsButtons_["sheets"]->setChecked(p == PageSheets);
     if (wsButtons_.contains("sketch")) wsButtons_["sketch"]->setChecked(p == PageSketch);
     if (wsButtons_.contains("interior")) wsButtons_["interior"]->setChecked(p == PageInterior);
+    if (wsButtons_.contains("model")) wsButtons_["model"]->setChecked(p == PageModel);
     if (dofLbl_) dofLbl_->setVisible(p == PageSketch);
     if (p == PageSheets) sheets_->refresh();
     if (p == PageSketch) sketch_->activate();
     if (p == PageInterior) interior_->activate();
+#ifdef PSI_WITH_OCCT
+    if (p == PageModel) model_->activate();
+#endif
     updateUndoRedo();
     if (p == PageDraft) { if (!view_->tool()) startTool("select"); view_->setFocus(); }
 }
@@ -707,6 +733,9 @@ void MainWindow::updateUndoRedo() {
     bool canUndo, canRedo; QString undoText, redoText;
     if (stack_ && stack_->currentIndex() == PageSketch) { canUndo = sketch_->canUndo(); canRedo = sketch_->canRedo(); undoText = sketch_->undoText(); redoText = sketch_->redoText(); }
     else if (stack_ && stack_->currentIndex() == PageInterior) { canUndo = interior_->canUndo(); canRedo = interior_->canRedo(); undoText = interior_->undoText(); redoText = interior_->redoText(); }
+#ifdef PSI_WITH_OCCT
+    else if (stack_ && stack_->currentIndex() == PageModel) { canUndo = model_->canUndo(); canRedo = model_->canRedo(); undoText = model_->undoText(); redoText = model_->redoText(); }
+#endif
     else { CommandStack& s = project_.commands(); canUndo = s.canUndo(); canRedo = s.canRedo(); undoText = s.undoText(); redoText = s.redoText(); }
     actions_["undo"]->setEnabled(canUndo);
     actions_["redo"]->setEnabled(canRedo);
