@@ -77,6 +77,9 @@ file(GLOB_RECURSE PSI_UI_SRC CONFIGURE_DEPENDS
      rendering/*.cpp rendering/*.h modules/draft/*.cpp modules/draft/*.h
      modules/sketcher/sketch_view.cpp modules/sketcher/sketch_view.h modules/interior/interior_view.cpp modules/interior/interior_view.h
      io/pdf/*.cpp io/pdf/*.h ui/*.cpp ui/*.h)
+if(NOT PSI_WITH_OCCT)
+  list(FILTER PSI_UI_SRC EXCLUDE REGEX "rendering/view3d\\.(cpp|h)$")   # 3D-вид нужен только с ядром
+endif()
 add_library(psi_ui STATIC ${PSI_UI_SRC})
 target_link_libraries(psi_ui PUBLIC psi_core Qt6::Gui Qt6::Widgets Qt6::PrintSupport Qt6::Svg)
 if(PSI_WITH_OCCT)
