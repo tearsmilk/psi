@@ -402,7 +402,13 @@ void Viewport::mouseReleaseEvent(QMouseEvent* ev) {
 }
 
 void Viewport::mouseDoubleClickEvent(QMouseEvent* ev) {
-    if (ev->button() == Qt::MiddleButton) zoomExtents();
+    if (ev->button() == Qt::MiddleButton) { zoomExtents(); return; }
+    if (ev->button() != Qt::LeftButton) return;
+    if (tool_ && !tool_->selecting()) return;   // a drawing tool owns the clicks
+    if (auto hit = hitTest(ev->position())) {
+        selection_.clear(); selection_.insert(*hit); Q_EMIT selectionChanged(); update();
+        Q_EMIT editRequested(*hit, ev->position());
+    }
 }
 
 void Viewport::wheelEvent(QWheelEvent* ev) {

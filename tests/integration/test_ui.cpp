@@ -2,9 +2,12 @@
 #include "modules/draft/snap.h"
 #include "modules/draft/tool.h"
 #include "rendering/viewport.h"
+#include "modules/draft/edit.h"
 #include "ui/icons.h"
+#include "ui/inline_editor.h"
 #include "ui/theme.h"
 #include <QApplication>
+#include <QLineEdit>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -236,6 +239,68 @@ private Q_SLOTS:
         QVERIFY(!SnapEngine::snap(d, {155, 155}, 3.0, std::nullopt, 0, 2.0).valid);
         st.gridSnap = false; d.setSettings(st);
         QVERIFY(!SnapEngine::snap(d, {300.2, 300.2}, 3.0, std::nullopt, 0, 8.0).valid);
+    }
+    void doubleClickEditsGeometry() {
+        Document& d = project_.document();
+        quint64 rid = d.addEntity(makeRectangle({0, 0}, {800, 500}));
+        quint64 did = d.addEntity(makeLinearDim({0, 0}, {800, 0}, {400, -60}, DimKind::Horizontal));
+        view_->zoomExtents();
+        // double-click on the dimension line asks for an editor
+        QSignalSpy spy(view_, &Viewport::editRequested);
+        QPoint at = px({400, -60}).toPoint();
+        QTest::mouseMove(view_, at);
+        QTest::mouseDClick(view_, Qt::LeftButton, Qt::NoModifier, at);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.last().at(0).value<quint64>(), did);
+        // fields and the inline editor: 800 → 1000 through Enter
+        std::vector<EditField> f = editFields(d, *d.entity(did));
+        QCOMPARE(f.size(), size_t(1));
+        QCOMPARE(f[0].value, 800.0);
+        auto* ed = new InlineEditor(f, d.settings().unit, d.settings().precision, view_);
+        QMap<QString, double> got; bool applied = false;
+        connect(ed, &InlineEditor::applied, this, [&](const QMap<QString, double>& v, const QString&) { got = v; applied = true; });
+        ed->popup(px({400, -60}));
+        QVERIFY(ed->isVisible());
+        ed->setFieldText("value", "1000");
+        QTest::keyClick(static_cast<QWidget*>(ed->field("value")), Qt::Key_Return);
+        QVERIFY(applied);
+        QCOMPARE(got.value("value"), 1000.0);
+        auto cmd = applyEdit(d, *d.entity(did), got);
+        QVERIFY(cmd);
+        project_.commands().push(std::move(cmd));
+        const Entity* rect = d.entity(rid);
+        QVERIFY(std::abs(entityBBox(*rect).width() - 1000) < 1e-6);
+        QVERIFY(std::abs(entityBBox(*rect).height() - 500) < 1e-6);
+        QVERIFY(std::abs(dimensionValue(*d.entity(did), nullptr) - 1000) < 1e-6);
+        project_.commands().undo();
+        QVERIFY(std::abs(entityBBox(*d.entity(rid)).width() - 800) < 1e-6);
+        // line: length / angle; rectangle: width × height; circle: radius / diameter; text
+        quint64 lid = d.addEntity(makeLine({0, 0}, {100, 0}));
+        auto lf = editFields(d, *d.entity(lid));
+        QCOMPARE(lf.size(), size_t(2));
+        project_.commands().push(applyEdit(d, *d.entity(lid), {{"length", 50}, {"angle", 90}}));
+        QVERIFY(std::abs(d.entity(lid)->pts[1].x) < 1e-6 && std::abs(d.entity(lid)->pts[1].y - 50) < 1e-6);
+        auto rf = editFields(d, *d.entity(rid));
+        QCOMPARE(rf.size(), size_t(2));
+        project_.commands().push(applyEdit(d, *d.entity(rid), {{"height", 300}}));
+        QVERIFY(std::abs(entityBBox(*d.entity(rid)).height() - 300) < 1e-6 && std::abs(entityBBox(*d.entity(rid)).width() - 800) < 1e-6);
+        quint64 cid = d.addEntity(makeCircle({0, 0}, 10));
+        project_.commands().push(applyEdit(d, *d.entity(cid), {{"diameter", 50}}));
+        QCOMPARE(d.entity(cid)->radius, 25.0);
+        quint64 rdim = d.addEntity(makeRadialDim(cid, {0, 0}, 25, {30, 30}, false));
+        project_.commands().push(applyEdit(d, *d.entity(rdim), {{"value", 40}}));
+        QCOMPARE(d.entity(cid)->radius, 40.0);
+        quint64 tid = d.addEntity(makeText({5, 5}, QStringLiteral("Старый"), 3.5));
+        QVERIFY(editFields(d, *d.entity(tid))[0].isText);
+        project_.commands().push(applyEdit(d, *d.entity(tid), {}, QStringLiteral("Новый")));
+        QCOMPARE(d.entity(tid)->text, QStringLiteral("Новый"));
+        QVERIFY(!applyEdit(d, *d.entity(tid), {}, QStringLiteral("Новый")));   // no change → no command
+        // Esc cancels
+        auto* ed2 = new InlineEditor(lf, d.settings().unit, d.settings().precision, view_);
+        QSignalSpy cancel(ed2, &InlineEditor::cancelled);
+        ed2->popup(px({50, 0}));
+        QTest::keyClick(static_cast<QWidget*>(ed2->field("length")), Qt::Key_Escape);
+        QCOMPARE(cancel.count(), 1);
     }
     void joinBooleanSplitViaTools() {
         Document& d = project_.document();

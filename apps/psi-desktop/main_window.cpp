@@ -1,4 +1,6 @@
 #include "main_window.h"
+#include "ui/inline_editor.h"
+#include "modules/draft/edit.h"
 #include <algorithm>
 #include <QMenu>
 #include "dialogs.h"
@@ -95,6 +97,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(command_, &QLineEdit::returnPressed, this, &MainWindow::runCommandLine);
     connect(view_, &Viewport::cursorMoved, this, [this](Point p) { lastCursor_ = p; updateStatus(); });
     command_->installEventFilter(this);
+    connect(view_, &Viewport::editRequested, this, &MainWindow::openInlineEditor);
     connect(command_, &QLineEdit::textEdited, this, [this] { tabIdx_ = -1; });
     connect(view_, &Viewport::promptChanged, this, [this](const QString& t) { prompt_->setText(t.isEmpty() ? QStringLiteral("Выберите инструмент") : t); });
     connect(view_, &Viewport::toolChanged, this, [this] {
@@ -369,6 +372,25 @@ void MainWindow::runCommandLine() {
         startTool(id); return;
     }
     statusBar()->showMessage(QStringLiteral("Не понял: «%1». Введите точку (100,50 · @40<30) или команду (l, c, r, m …)").arg(text), 5000);
+}
+
+// Double-click on an entity: inline editor over the viewport; Enter applies through an undoable command
+void MainWindow::openInlineEditor(quint64 id, QPointF screen) {
+    const Entity* e = project_.document().entity(id);
+    if (!e || e->locked) return;
+    std::vector<EditField> fields = editFields(project_.document(), *e);
+    if (fields.empty()) { statusBar()->showMessage(QStringLiteral("Для этого объекта нет быстрого редактирования — см. панель «Свойства»"), 3000); return; }
+    if (auto* old = view_->findChild<InlineEditor*>()) old->close();
+    const DocumentSettings& s = project_.document().settings();
+    auto* ed = new InlineEditor(fields, s.unit, s.precision, view_);
+    connect(ed, &InlineEditor::applied, this, [this, id](const QMap<QString, double>& values, const QString& text) {
+        const Entity* cur = project_.document().entity(id);
+        if (!cur) return;
+        if (auto cmd = applyEdit(project_.document(), *cur, values, text)) project_.commands().push(std::move(cmd));
+        view_->invalidate(); view_->setFocus();
+    });
+    connect(ed, &InlineEditor::cancelled, this, [this] { view_->setFocus(); });
+    ed->popup(screen);
 }
 
 void MainWindow::setSnapStep(double step) {

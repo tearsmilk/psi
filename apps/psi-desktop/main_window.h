@@ -62,6 +62,7 @@ private:
     void editDocumentSettings();
     void editAppSettings();
     void setSnapStep(double step);
+    void openInlineEditor(quint64 id, QPointF screen);
     void cycleRounding();
     void toggleSetting(const std::function<void(DocumentSettings&)>& fn, const QString& text);
     void updateTitle();
