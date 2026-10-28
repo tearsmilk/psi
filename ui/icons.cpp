@@ -12,7 +12,8 @@ QStringList Icons::names() {
     return {"select", "line", "polyline", "rect", "circle", "arc", "ellipse", "spline", "text", "leader", "dim", "dim-radius", "dim-angle",
             "dim-h", "dim-v", "dim-diameter", "hatch", "move", "copy", "rotate", "mirror", "scale", "offset", "trim", "extend", "fillet", "chamfer", "array", "explode",
             "delete", "join", "union", "subtract", "intersect", "split", "cut", "search", "star", "compact", "magnet", "zoom-extents", "zoom-window", "grid", "snap", "ortho", "polar", "layers", "sheet", "pdf", "undo", "redo", "new", "open",
-            "save", "settings", "draft", "sketch", "model", "assembly", "interior", "drawing", "props", "tree", "tools", "eye", "lock", "plus", "minus", "print"};
+            "save", "settings", "draft", "sketch", "model", "assembly", "interior", "drawing", "props", "tree", "tools", "eye", "lock", "plus", "minus", "print",
+            "extrude", "revolve", "hole", "patternCircular", "plane", "axis", "shell", "stl", "step", "rebuild", "face", "edge", "vertex", "body", "iso", "persp", "up", "down"};
 }
 
 static void draw(QPainter& p, const QString& n, double s) {
@@ -80,6 +81,25 @@ static void draw(QPainter& p, const QString& n, double s) {
     else if (n == "settings") { C(10, 10, 3); for (int i = 0; i < 8; ++i) { double a = i * kPi / 4; L(10 + 5 * std::cos(a), 10 + 5 * std::sin(a), 10 + 7.5 * std::cos(a), 10 + 7.5 * std::sin(a)); } }
     else if (n == "draft") { L(4, 16, 16, 4); L(4, 16, 4, 11); L(4, 16, 9, 16); }
     else if (n == "sketch") { QPainterPath a; a.moveTo(3 * s, 14 * s); a.cubicTo(6 * s, 4 * s, 12 * s, 18 * s, 17 * s, 6 * s); p.drawPath(a); dot(3, 14); dot(17, 6); }
+    // ---- Модель (3D)
+    else if (n == "extrude") { R(4, 12, 10, 5); L(4, 12, 7, 8); L(14, 12, 17, 8); L(7, 8, 17, 8); L(17, 8, 17, 13); L(14, 17, 17, 13); L(12, 3, 12, 7); arrow(12, 3, 0, -1); }
+    else if (n == "revolve") { L(10, 3, 10, 17); QPainterPath a; a.moveTo(12 * s, 5 * s); a.lineTo(16 * s, 5 * s); a.lineTo(16 * s, 15 * s); a.lineTo(12 * s, 15 * s); a.closeSubpath(); p.drawPath(a); QRectF r(3 * s, 12 * s, 14 * s, 6 * s); p.drawArc(r, 200 * 16, 140 * 16); arrow(4.5, 13.3, -0.3, -1); }
+    else if (n == "hole") { R(3, 7, 14, 10); p.drawEllipse(QRectF(7 * s, 5 * s, 6 * s, 3 * s)); L(7, 6.5, 7, 13); L(13, 6.5, 13, 13); QRectF r(7 * s, 11.5 * s, 6 * s, 3 * s); p.drawArc(r, 180 * 16, 180 * 16); }
+    else if (n == "patternCircular") { C(10, 10, 1.6); for (int i = 0; i < 6; ++i) { double a = i * kPi / 3; dot(10 + 6.2 * std::cos(a), 10 + 6.2 * std::sin(a)); } }
+    else if (n == "plane") { QPainterPath a; a.moveTo(3 * s, 15 * s); a.lineTo(8 * s, 5 * s); a.lineTo(17 * s, 5 * s); a.lineTo(12 * s, 15 * s); a.closeSubpath(); p.drawPath(a); }
+    else if (n == "axis") { L(10, 17, 10, 3); arrow(10, 3, 0, -1); L(5, 15, 15, 15); }
+    else if (n == "shell") { R(4, 4, 12, 12); R(7, 7, 6, 6); L(4, 4, 7, 7); L(16, 4, 13, 7); L(4, 16, 7, 13); L(16, 16, 13, 13); }
+    else if (n == "stl") { QPainterPath a; a.moveTo(3 * s, 16 * s); a.lineTo(10 * s, 4 * s); a.lineTo(17 * s, 16 * s); a.closeSubpath(); p.drawPath(a); L(10, 4, 10, 16); L(3, 16, 13.5, 10); L(17, 16, 6.5, 10); }
+    else if (n == "step") { QPainterPath a; a.moveTo(10 * s, 3 * s); a.lineTo(17 * s, 7 * s); a.lineTo(17 * s, 14 * s); a.lineTo(10 * s, 18 * s); a.lineTo(3 * s, 14 * s); a.lineTo(3 * s, 7 * s); a.closeSubpath(); p.drawPath(a); L(3, 7, 17, 14); L(17, 7, 3, 14); }
+    else if (n == "rebuild") { QRectF r(4 * s, 4 * s, 12 * s, 12 * s); p.drawArc(r, 30 * 16, 280 * 16); arrow(15.2, 7, 0.5, -0.85); }
+    else if (n == "face") { QPainterPath a; a.moveTo(4 * s, 15 * s); a.lineTo(8 * s, 5 * s); a.lineTo(16 * s, 5 * s); a.lineTo(12 * s, 15 * s); a.closeSubpath(); p.save(); p.setBrush(QColor(p.pen().color().red(), p.pen().color().green(), p.pen().color().blue(), 60)); p.drawPath(a); p.restore(); }
+    else if (n == "edge") { QPainterPath a; a.moveTo(4 * s, 15 * s); a.lineTo(8 * s, 5 * s); a.lineTo(16 * s, 5 * s); a.lineTo(12 * s, 15 * s); a.closeSubpath(); p.save(); p.setPen(QPen(p.pen().color(), p.pen().widthF() * 0.5)); p.drawPath(a); p.restore(); p.save(); p.setPen(QPen(p.pen().color(), p.pen().widthF() * 1.8)); L(8, 5, 16, 5); p.restore(); }
+    else if (n == "vertex") { QPainterPath a; a.moveTo(4 * s, 15 * s); a.lineTo(8 * s, 5 * s); a.lineTo(16 * s, 5 * s); a.lineTo(12 * s, 15 * s); a.closeSubpath(); p.save(); p.setPen(QPen(p.pen().color(), p.pen().widthF() * 0.5)); p.drawPath(a); p.restore(); dot(16, 5); }
+    else if (n == "body") { QPainterPath a; a.moveTo(10 * s, 3 * s); a.lineTo(17 * s, 7 * s); a.lineTo(17 * s, 14 * s); a.lineTo(10 * s, 18 * s); a.lineTo(3 * s, 14 * s); a.lineTo(3 * s, 7 * s); a.closeSubpath(); p.save(); p.setBrush(QColor(p.pen().color().red(), p.pen().color().green(), p.pen().color().blue(), 60)); p.drawPath(a); p.restore(); }
+    else if (n == "iso") { QPainterPath a; a.moveTo(10 * s, 3 * s); a.lineTo(17 * s, 7 * s); a.lineTo(17 * s, 14 * s); a.lineTo(10 * s, 18 * s); a.lineTo(3 * s, 14 * s); a.lineTo(3 * s, 7 * s); a.closeSubpath(); p.drawPath(a); L(10, 10, 10, 18); L(10, 10, 17, 7); L(10, 10, 3, 7); dot(10, 10); }
+    else if (n == "persp") { L(3, 16, 17, 16); L(3, 16, 7, 6); L(17, 16, 13, 6); L(7, 6, 13, 6); L(6, 11, 14, 11); }
+    else if (n == "up") { L(10, 16, 10, 5); arrow(10, 5, 0, -1); }
+    else if (n == "down") { L(10, 4, 10, 15); arrow(10, 15, 0, 1); }
     else if (n == "model") { QPainterPath a; a.moveTo(10 * s, 3 * s); a.lineTo(17 * s, 7 * s); a.lineTo(17 * s, 14 * s); a.lineTo(10 * s, 18 * s); a.lineTo(3 * s, 14 * s); a.lineTo(3 * s, 7 * s); a.closeSubpath(); p.drawPath(a); L(10, 10, 10, 18); L(10, 10, 17, 7); L(10, 10, 3, 7); }
     else if (n == "assembly") { C(7, 7, 3.5); C(13.5, 12.5, 4); L(9.5, 9.5, 10.5, 10.5); }
     else if (n == "interior") { QPainterPath a; a.moveTo(3 * s, 10 * s); a.lineTo(10 * s, 3 * s); a.lineTo(17 * s, 10 * s); p.drawPath(a); R(5, 10, 10, 7); R(8, 12, 4, 5); }

@@ -1,4 +1,7 @@
 file(GLOB PSI_APP_SRC CONFIGURE_DEPENDS *.cpp *.h)
+if(NOT PSI_WITH_OCCT)
+  list(FILTER PSI_APP_SRC EXCLUDE REGEX "model_page\\.(cpp|h)$")   # рабочее пространство «Модель» только с OCCT
+endif()
 qt_add_executable(psi ${PSI_APP_SRC})
 target_link_libraries(psi PRIVATE psi_ui)
 set_target_properties(psi PROPERTIES

@@ -15,16 +15,17 @@ const TypeInfo kTypes[] = {
     {FeatureType::Extrude, "extrude", "Выдавливание", "extrude"},
     {FeatureType::Revolve, "revolve", "Вращение", "revolve"},
     {FeatureType::Hole, "hole", "Отверстие", "hole"},
-    {FeatureType::Fillet, "fillet", "Скругление", "fillet3d"},
-    {FeatureType::Chamfer, "chamfer", "Фаска", "chamfer3d"},
-    {FeatureType::LinearPattern, "linearPattern", "Массив линейный", "patternLinear"},
+    {FeatureType::Fillet, "fillet", "Скругление", "fillet"},
+    {FeatureType::Chamfer, "chamfer", "Фаска", "chamfer"},
+    {FeatureType::LinearPattern, "linearPattern", "Массив линейный", "array"},
     {FeatureType::CircularPattern, "circularPattern", "Массив круговой", "patternCircular"},
-    {FeatureType::Mirror, "mirror", "Зеркало", "mirror3d"},
-    {FeatureType::Boolean, "boolean", "Булева операция", "boolean"},
+    {FeatureType::Mirror, "mirror", "Зеркало", "mirror"},
+    {FeatureType::Boolean, "boolean", "Булева операция", "union"},
     {FeatureType::DatumPlane, "datumPlane", "Плоскость", "plane"},
     {FeatureType::DatumAxis, "datumAxis", "Ось", "axis"},
     {FeatureType::Shell, "shell", "Оболочка", "shell"},
     {FeatureType::MeshBody, "meshBody", "Тело-сетка", "stl"},
+    {FeatureType::ImportBody, "importBody", "Импорт", "step"},
 };
 const TypeInfo& info(FeatureType t) { for (const auto& i : kTypes) if (i.t == t) return i; return kTypes[0]; }
 
@@ -479,6 +480,14 @@ bool Part::applyFeature(Feature& f, State& st) {
         Result r = Kernel::fromMesh(pos, idx);
         if (!r.ok()) return fail(r.error);
         Body b; b.name = f.params["name"].toString(f.name); b.shape = r.shape; b.mesh = true; b.origin = f.id;
+        st.bodies.push_back(b);
+        return true;
+    }
+    case FeatureType::ImportBody: {
+        QString err;
+        Shape s = Shape::fromBrep(QByteArray::fromBase64(f.params["brep"].toString().toLatin1()), &err);
+        if (s.isNull()) return fail(err.isEmpty() ? QStringLiteral("тело не прочитано") : err);
+        Body b; b.name = f.params["name"].toString(f.name); b.shape = s; b.origin = f.id;
         st.bodies.push_back(b);
         return true;
     }

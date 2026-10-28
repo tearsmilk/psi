@@ -17,6 +17,7 @@
 //   DatumAxis  base "X"|"Y"|"Z" | point/dir
 //   Shell      body, thickness, faces [индексы открытых граней]
 //   MeshBody   name, mesh (base64: uint32 n, uint32 t, float·3n, uint32·3t) — импорт STL, непараметрическое тело
+//   ImportBody name, brep (base64 BREP) — импорт STEP: тело без истории построения, участвует в булевых операциях
 #include "modules/model/kernel.h"
 #include <QJsonArray>
 #include <QJsonObject>
@@ -27,7 +28,7 @@ namespace psi::sk { class Sketch; }
 
 namespace psi::md {
 
-enum class FeatureType { Sketch, Extrude, Revolve, Hole, Fillet, Chamfer, LinearPattern, CircularPattern, Mirror, Boolean, DatumPlane, DatumAxis, Shell, MeshBody };
+enum class FeatureType { Sketch, Extrude, Revolve, Hole, Fillet, Chamfer, LinearPattern, CircularPattern, Mirror, Boolean, DatumPlane, DatumAxis, Shell, MeshBody, ImportBody };
 
 QString featureTypeName(FeatureType t);        // «Выдавливание»
 QString featureTypeKey(FeatureType t);         // "extrude"
